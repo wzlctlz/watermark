@@ -260,17 +260,15 @@ const Watermark = (() => {
   /**
    * 加载高德静态地图
    */
+  // Cloudflare Worker 代理地址（Key 隐藏在 Worker 中）
+  const PROXY_BASE = 'https://white-bonus-98f5.784406877.workers.dev'
+
   function loadMapImage(gcjLng, gcjLat, amapKey, size, zoom) {
     return new Promise(function(resolve) {
-      if (!amapKey) { resolve(null); return }
-
       var z = zoom || 15
       const mapSize = Math.min(size || 350, 1024)
-      const apiUrl = 'https://restapi.amap.com/v3/staticmap?location=' + gcjLng + ',' + gcjLat + '&zoom=' + z + '&size=' + mapSize + '*' + mapSize + '&scale=2&markers=large,,:' + gcjLng + ',' + gcjLat + '&key=' + amapKey
-      const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(apiUrl)
+      const proxyUrl = PROXY_BASE + '/staticmap?location=' + gcjLng + ',' + gcjLat + '&zoom=' + z + '&size=' + mapSize + '*' + mapSize + '&scale=2&markers=large,,:' + gcjLng + ',' + gcjLat
 
-      window.__lastMapApiUrl = apiUrl
-      console.log('[地图] API地址:', apiUrl)
       console.log('[地图] 代理地址:', proxyUrl)
 
       var fetchOpts = {}
@@ -293,42 +291,25 @@ const Watermark = (() => {
             img.onload = function() {
               console.log('[地图] 加载成功:', this.naturalWidth, 'x', this.naturalHeight)
               this._fromProxy = true
-              this._apiUrl = apiUrl
               resolve(this)
             }
             img.onerror = function() {
               console.warn('[地图] dataURL加载失败')
-              loadDirect(apiUrl, resolve)
+              resolve(null)
             }
             img.src = dataUrl
           }
           reader.onerror = function() {
             console.warn('[地图] FileReader失败')
-            loadDirect(apiUrl, resolve)
+            resolve(null)
           }
           reader.readAsDataURL(blob)
         })
-        .catch(function(proxyErr) {
-          console.warn('[地图] 代理失败:', proxyErr.message)
-          loadDirect(apiUrl, resolve)
+        .catch(function(err) {
+          console.warn('[地图] 代理失败:', err.message)
+          resolve(null)
         })
     })
-  }
-
-  function loadDirect(apiUrl, resolve) {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = function() {
-      console.log('[地图] 直接加载成功(跨域)')
-      this._taintsCanvas = true
-      this._apiUrl = apiUrl
-      resolve(this)
-    }
-    img.onerror = function() {
-      console.warn('[地图] 直接加载失败')
-      resolve(null)
-    }
-    img.src = apiUrl
   }
 
   return { addWatermark: addWatermark, loadMapImage: loadMapImage }

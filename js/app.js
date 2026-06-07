@@ -5,6 +5,8 @@
  */
 
 // ===== 全局状态 =====
+const AMAP_PROXY = 'https://white-bonus-98f5.784406877.workers.dev'
+
 const state = {
   files: [],
   exifData: new Map(),
@@ -266,7 +268,6 @@ async function selectPhotoForInfo(idx) {
   var key = file.name + '_' + file.size
   var exifResult = state.exifData.get(key)
   var gps = exifResult && exifResult.gps ? exifResult.gps : null
-  var amapKey = document.getElementById('amapKey').value.trim()
 
   // 标记选中
   state.selectedIdx = idx
@@ -314,10 +315,10 @@ async function selectPhotoForInfo(idx) {
   document.getElementById('coordsText').value = coordStr
 
   // 逆地理编码获取地址
-  if (amapKey && state.sharedGcjLng && state.sharedGcjLat) {
+  if (state.sharedGcjLng && state.sharedGcjLat) {
     log('[加载照片信息] 正在逆地理编码...')
     try {
-      var address = await reverseGeocode(state.sharedGcjLng, state.sharedGcjLat, amapKey)
+      var address = await reverseGeocode(state.sharedGcjLng, state.sharedGcjLat)
       state.sharedAddress = address
       document.getElementById('addressText').value = address
       log('[加载照片信息] 地址: ' + address, 'ok')
@@ -336,7 +337,7 @@ async function selectPhotoForInfo(idx) {
 
   // 加载静态地图
   state.sharedMapImg = null
-  if (document.getElementById('showMap').checked && amapKey && state.sharedGcjLng && state.sharedGcjLat) {
+  if (document.getElementById('showMap').checked && state.sharedGcjLng && state.sharedGcjLat) {
     log('[加载照片信息] 正在加载静态地图...')
     try {
       var cacheKey = state.sharedGcjLng.toFixed(4) + ',' + state.sharedGcjLat.toFixed(4)
@@ -418,16 +419,13 @@ async function getCurrentLocation() {
 
     info.innerHTML = '✅ GCJ02: ' + gcj.lng.toFixed(6) + ', ' + gcj.lat.toFixed(6) + '<br>WGS84: ' + wgsLng.toFixed(6) + ', ' + wgsLat.toFixed(6)
 
-    var amapKey = document.getElementById('amapKey').value.trim()
-    if (amapKey) {
-      try {
-        var addr = await reverseGeocode(gcj.lng, gcj.lat, amapKey)
-        state.currentLocation.address = addr
-        info.innerHTML += '<br>📍 ' + addr
-        document.getElementById('addressText').value = addr
-      } catch (e) {
-        log('[定位] 逆地理编码失败: ' + e.message, 'warn')
-      }
+    try {
+      var addr = await reverseGeocode(gcj.lng, gcj.lat)
+      state.currentLocation.address = addr
+      info.innerHTML += '<br>📍 ' + addr
+      document.getElementById('addressText').value = addr
+    } catch (e) {
+      log('[定位] 逆地理编码失败: ' + e.message, 'warn')
     }
 
     showToast('定位成功')
@@ -439,15 +437,13 @@ async function getCurrentLocation() {
   }
 }
 
-// ===== 逆地理编码（JSONP 绕过 CORS）=====
-function reverseGeocode(lng, lat, amapKey) {
+// ===== 逆地理编码（通过 Cloudflare Worker 代理，Key 隐藏在 Worker 中）=====
+function reverseGeocode(lng, lat) {
   return new Promise(function(resolve, reject) {
-    if (!amapKey) { reject(new Error('无高德Key')); return }
-
     var callbackName = '_amap_regeo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
 
     var script = document.createElement('script')
-    script.src = 'https://restapi.amap.com/v3/geocode/regeo?key=' + amapKey + '&location=' + lng + ',' + lat + '&extensions=base&callback=' + callbackName
+    script.src = AMAP_PROXY + '/regeo?location=' + lng + ',' + lat + '&callback=' + callbackName
 
     var timer = setTimeout(function() {
       delete window[callbackName]
@@ -813,7 +809,6 @@ function getConfig() {
     projectName: document.getElementById('projectName').value.trim(),
     address: document.getElementById('addressText').value.trim(),
     remark: document.getElementById('remarkText').value.trim(),
-    amapKey: document.getElementById('amapKey').value.trim(),
     showProject: document.getElementById('showProject').checked,
     showAddress: document.getElementById('showAddress').checked,
     showCoords: document.getElementById('showCoords').checked,
@@ -838,7 +833,6 @@ function loadSavedConfig() {
     if (saved.projectName) document.getElementById('projectName').value = saved.projectName
     if (saved.address) document.getElementById('addressText').value = saved.address
     if (saved.remark) document.getElementById('remarkText').value = saved.remark
-    if (saved.amapKey) document.getElementById('amapKey').value = saved.amapKey
     if (saved.showProject !== undefined) document.getElementById('showProject').checked = saved.showProject
     if (saved.showAddress !== undefined) document.getElementById('showAddress').checked = saved.showAddress
     if (saved.showCoords !== undefined) document.getElementById('showCoords').checked = saved.showCoords
@@ -903,7 +897,7 @@ function showToast(msg) {
 }
 
 // 自动保存配置
-document.querySelectorAll('#projectName,#addressText,#remarkText,#amapKey,#coordsText,#dateText').forEach(function(el) {
+document.querySelectorAll('#projectName,#addressText,#remarkText,#coordsText,#dateText').forEach(function(el) {
   el.addEventListener('input', saveConfig)
 })
 // zoom输入框自动保存
