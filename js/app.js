@@ -345,7 +345,7 @@ async function selectPhotoForInfo(idx) {
         state.sharedMapImg = state.mapCache.get(cacheKey)
         log('[加载照片信息] 地图: 使用缓存', 'ok')
       } else {
-        state.sharedMapImg = await Watermark.loadMapImage(state.sharedGcjLng, state.sharedGcjLat, amapKey, 350, parseInt(document.getElementById('mapZoom').value) || 15)
+        state.sharedMapImg = await Watermark.loadMapImage(state.sharedGcjLng, state.sharedGcjLat, 350, parseInt(document.getElementById('mapZoom').value) || 15)
         if (state.sharedMapImg) {
           state.mapCache.set(cacheKey, state.sharedMapImg)
           log('[加载照片信息] 地图: 加载成功 ' + state.sharedMapImg.naturalWidth + 'x' + state.sharedMapImg.naturalHeight, 'ok')
@@ -437,39 +437,28 @@ async function getCurrentLocation() {
   }
 }
 
-// ===== 逆地理编码（通过 Cloudflare Worker 代理，Key 隐藏在 Worker 中）=====
+// ===== 逆地理编码（通过 Cloudflare Worker 代理，fetch 方式）=====
 function reverseGeocode(lng, lat) {
   return new Promise(function(resolve, reject) {
-    var callbackName = '_amap_regeo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-
-    var script = document.createElement('script')
-    script.src = AMAP_PROXY + '/regeo?location=' + lng + ',' + lat + '&callback=' + callbackName
-
-    var timer = setTimeout(function() {
-      delete window[callbackName]
-      if (script.parentNode) script.parentNode.removeChild(script)
-      reject(new Error('逆地理编码超时'))
-    }, 10000)
-
-    window[callbackName] = function(data) {
-      clearTimeout(timer)
-      delete window[callbackName]
-      if (script.parentNode) script.parentNode.removeChild(script)
-      if (data && data.status === '1' && data.regeocode) {
-        resolve(data.regeocode.formatted_address || '')
-      } else {
-        reject(new Error((data && data.info) || '逆地理编码失败'))
-      }
-    }
-
-    script.onerror = function() {
-      clearTimeout(timer)
-      delete window[callbackName]
-      if (script.parentNode) script.parentNode.removeChild(script)
-      reject(new Error('逆地理编码网络错误'))
-    }
-
-    document.head.appendChild(script)
+    var url = AMAP_PROXY + '/regeo?location=' + encodeURIComponent(lng + ',' + lat)
+    var timer = setTimeout(function() { reject(new Error('逆地理编码超时')) }, 10000)
+    fetch(url, { signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined })
+      .then(function(res) {
+        clearTimeout(timer)
+        if (!res.ok) throw new Error('HTTP ' + res.status)
+        return res.json()
+      })
+      .then(function(data) {
+        if (data && data.status === '1' && data.regeocode) {
+          resolve(data.regeocode.formatted_address || '')
+        } else {
+          reject(new Error((data && data.info) || '逆地理编码失败'))
+        }
+      })
+      .catch(function(err) {
+        clearTimeout(timer)
+        reject(err)
+      })
   })
 }
 

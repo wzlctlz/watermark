@@ -263,7 +263,7 @@ const Watermark = (() => {
   // Cloudflare Worker 代理地址（Key 隐藏在 Worker 中）
   const PROXY_BASE = 'https://white-bonus-98f5.784406877.workers.dev'
 
-  function loadMapImage(gcjLng, gcjLat, amapKey, size, zoom) {
+  function loadMapImage(gcjLng, gcjLat, size, zoom) {
     return new Promise(function(resolve) {
       var z = zoom || 15
       const mapSize = Math.min(size || 350, 1024)
