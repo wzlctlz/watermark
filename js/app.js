@@ -915,7 +915,7 @@ document.getElementById('mapZoom').addEventListener('input', function() {
   saveConfig()
   // 防抖：拖动过程中不发请求，停止800ms后才请求
   if (_zoomDebounceTimer) clearTimeout(_zoomDebounceTimer)
-  _zoomDebounceTimer = setTimeout(reloadMapOnZoomChange, 800)
+  _zoomDebounceTimer = setTimeout(reloadMapOnZoomChange, 2000)
 })
 
 async function reloadMapOnZoomChange() {
