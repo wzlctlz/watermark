@@ -836,7 +836,7 @@ function loadSavedConfig() {
     var saved = JSON.parse(localStorage.getItem('watermarkConfig'))
     if (!saved) return
     if (saved.projectName) document.getElementById('projectName').value = saved.projectName
-    if (saved.address) document.getElementById('addressText').value = saved.address
+    // 地址和坐标不恢复，避免前一次数据污染本次
     if (saved.remark) document.getElementById('remarkText').value = saved.remark
     if (saved.amapKey) document.getElementById('amapKey').value = saved.amapKey
     if (saved.showProject !== undefined) document.getElementById('showProject').checked = saved.showProject
@@ -850,8 +850,8 @@ function loadSavedConfig() {
       var zoomValueEl = document.getElementById('mapZoomValue')
       if (zoomValueEl) zoomValueEl.textContent = saved.mapZoom
     }
-    if (saved.coordsText) document.getElementById('coordsText').value = saved.coordsText
-    if (saved.dateText) document.getElementById('dateText').value = saved.dateText
+    // coordsText 不恢复
+    // dateText 不恢复
   } catch (e) {}
 }
 
@@ -908,11 +908,34 @@ function showToast(msg) {
 document.querySelectorAll('#projectName,#addressText,#remarkText,#amapKey,#coordsText,#dateText').forEach(function(el) {
   el.addEventListener('input', saveConfig)
 })
-// zoom滑动条自动保存 + 实时显示数值
+// zoom滑动条自动保存 + 实时显示数值 + 重新加载地图
 document.getElementById('mapZoom').addEventListener('input', function() {
   document.getElementById('mapZoomValue').textContent = this.value
   saveConfig()
+  // 如果已有坐标和地图，重新加载静态地图
+  reloadMapOnZoomChange()
 })
+
+async function reloadMapOnZoomChange() {
+  var amapKey = document.getElementById('amapKey').value.trim()
+  if (!document.getElementById('showMap').checked || !amapKey || !state.sharedGcjLng || !state.sharedGcjLat) return
+
+  var zoom = parseInt(document.getElementById('mapZoom').value) || 15
+  log('[地图] 缩放级别变更 → 重新加载地图 (zoom=' + zoom + ')')
+
+  try {
+    state.sharedMapImg = await Watermark.loadMapImage(state.sharedGcjLng, state.sharedGcjLat, amapKey, 350, zoom)
+    if (state.sharedMapImg) {
+      log('[地图] 重新加载成功', 'ok')
+    } else {
+      log('[地图] 重新加载失败', 'warn')
+    }
+  } catch (e) {
+    log('[地图] 重新加载失败: ' + e.message, 'warn')
+  }
+
+  updateMapPreview()
+}
 document.querySelectorAll('input[type="checkbox"]').forEach(function(el) {
   el.addEventListener('change', saveConfig)
 })
