@@ -908,14 +908,13 @@ function showToast(msg) {
 document.querySelectorAll('#projectName,#addressText,#remarkText,#amapKey,#coordsText,#dateText').forEach(function(el) {
   el.addEventListener('input', saveConfig)
 })
-// zoom滑动条：实时显示数值 + 防抖重新加载地图
-var _zoomDebounceTimer = null
+// zoom滑动条：拖动中只更新数值，松开后才重新加载地图
 document.getElementById('mapZoom').addEventListener('input', function() {
   document.getElementById('mapZoomValue').textContent = this.value
   saveConfig()
-  // 防抖：拖动过程中不发请求，停止800ms后才请求
-  if (_zoomDebounceTimer) clearTimeout(_zoomDebounceTimer)
-  _zoomDebounceTimer = setTimeout(reloadMapOnZoomChange, 2000)
+})
+document.getElementById('mapZoom').addEventListener('change', function() {
+  reloadMapOnZoomChange()
 })
 
 async function reloadMapOnZoomChange() {
