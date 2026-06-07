@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>水印相机</title>
+  <style>
+    * { margin:0; padding:0; box-sizing: border-box; }
+    :root {
+      --bg: #f5f7fa; --card: #fff; --primary: #10b981; --primary-light: #ecfdf5;
+      --text: #1e293b; --text2: #64748b; --border: #e2e8f0; --danger: #ef4444;
+      --success: #10b981; --warning: #f59e0b; --radius: 10px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+
+    /* Header */
+    .header { background: #10b981; border-radius: var(--radius); padding: 12px 18px; }
+    .header h1 { font-size: 18px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* Card */
+    .card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .card-header { padding: 12px 18px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; display: flex; align-items: center; justify-content: space-between; color: var(--text); }
+    .card-body { padding: 16px 18px; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: #059669; }
+    .btn-primary:disabled { background: #6ee7b7; cursor: not-allowed; }
+    .btn-outline { background: #fff; color: var(--text2); border: 1px solid var(--border); }
+    .btn-outline:hover { border-color: #94a3b8; color: var(--text); }
+    .btn-danger { background: #fff; color: var(--danger); border: 1px solid #fecaca; }
+    .btn-danger:hover { background: #fef2f2; border-color: #f87171; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #059669; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-block { width: 100%; }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* Form */
+    .form-group { margin-bottom: 14px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-label { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 6px; }
+    .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; transition: all 0.2s; background: #fafbfc; }
+    .form-input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+    .form-input::placeholder { color: #94a3b8; font-size: 12px; }
+
+    /* Toggle */
+    .switch { position: relative; display: inline-block; width: 32px; height: 18px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch .slider { position: absolute; top:0; left:0; right:0; bottom:0; background: #cbd5e1; border-radius: 18px; cursor: pointer; transition: 0.25s; }
+    .switch .slider:before { content: ''; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: #fff; border-radius: 50%; transition: 0.25s; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+    .switch input:checked + .slider { background: var(--primary); }
+    .switch input:checked + .slider:before { transform: translateX(14px); }
+
+    /* Photo grid */
+    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+    .photo-item { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; background: #f1f5f9; cursor: pointer; border: 1.5px solid transparent; transition: all 0.2s; }
+    .photo-item:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.1); }
+    .photo-item.selected { border: 3px solid #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.2); }
+    .photo-item.select-mode { cursor: crosshair; }
+    .photo-item.select-mode:hover { border-color: #ef4444; box-shadow: 0 4px 12px rgba(239,68,68,0.15); }
+    .photo-item img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-item .badge { position: absolute; top: 4px; right: 4px; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; color: #fff; }
+    .badge-gps { background: var(--success); }
+    .badge-nogps { background: var(--warning); }
+    .badge-done { background: var(--primary); }
+    .photo-item .filename { position: absolute; bottom: 0; left: 0; right: 0; padding: 3px 6px; background: rgba(0,0,0,0.55); color: #fff; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Stats bar */
+    .stats-bar { display: flex; gap: 20px; font-size: 12px; flex-wrap: wrap; }
+    .stat-item { display: flex; align-items: center; gap: 5px; color: var(--text2); }
+    .stat-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .stat-item b { color: var(--text); font-weight: 600; }
+
+    /* Config grid */
+    .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+    .config-full { grid-column: 1 / -1; }
+
+    /* Section divider inside config */
+    .config-section-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin: 4px 0 8px; grid-column: 1 / -1; }
+    .config-section-title:first-child { margin-top: 0; }
+
+    /* Zoom input row */
+    .zoom-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .zoom-row input[type="number"] { width: 60px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none; background: #fafbfc; text-align: center; }
+    .zoom-row input[type="number"]:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+    .zoom-label { font-size: 12px; color: var(--text2); white-space: nowrap; }
+    .zoom-range { font-size: 11px; color: #94a3b8; }
+
+    /* Progress */
+    .progress-bar { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s; }
+    .progress-text { font-size: 12px; color: var(--text2); margin-top: 6px; text-align: center; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .modal-content { max-width: 90vw; max-height: 90vh; position: relative; }
+    .modal-content img { max-width: 100%; max-height: 85vh; border-radius: 8px; }
+    .modal-close { position: absolute; top: -12px; right: -12px; width: 32px; height: 32px; border-radius: 50%; background: #fff; border: none; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .modal-info { background: rgba(0,0,0,0.7); color: #fff; padding: 10px 16px; border-radius: 0 0 8px 8px; font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap; }
+
+    /* Amap key */
+    .amap-key-section { padding: 10px 14px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; }
+    .amap-key-section label { font-size: 12px; color: #92400e; display: block; margin-bottom: 4px; }
+
+    /* Log area */
+    .log-area { height: 160px; overflow-y: auto; background: #0f172a; color: #cbd5e1; padding: 10px 12px; border-radius: 8px; font-family: 'Consolas', 'Monaco', 'SF Mono', monospace; font-size: 11px; line-height: 1.6; }
+    .log-area .log-ok { color: #34d399; }
+    .log-area .log-warn { color: #fbbf24; }
+    .log-area .log-err { color: #f87171; }
+
+    /* Animation */
+    @keyframes fadeIn { from { opacity:0; transform: translateY(5px); } to { opacity:1; transform: translateY(0); } }
+    .photo-item { animation: fadeIn 0.25s ease; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+    /* Action area */
+    .action-card { background: #fff; border-radius: var(--radius); border: 1px solid var(--border); padding: 14px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .action-card .btn-group { gap: 10px; }
+
+    @media (max-width: 640px) {
+      .config-grid { grid-template-columns: 1fr; }
+      .photo-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+      .btn-group { flex-direction: column; }
+      .btn-group .btn { width: 100%; }
+      .container { padding: 12px; gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>水印相机</h1>
+  </div>
+
+    <!-- Row1: 照片列表 -->
+    <div class="card" id="photoCard">
+      <div class="card-header">
+        <span>照片列表（<span id="photoCount">0</span> 张）</span>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">选择照片</button>
+      </div>
+      <div class="card-body">
+        <div class="photo-grid" id="photoGrid"></div>
+        <div id="photoEmpty" style="text-align:center;padding:32px 16px;color:var(--text2)">
+          <div style="font-size:40px;margin-bottom:8px">📷</div>
+          <div>暂无照片，点击上方按钮或拖拽文件夹到页面添加</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row2: 统计 -->
+    <div class="card" id="statsCard">
+      <div class="card-body" style="padding:10px 18px">
+        <div class="stats-bar">
+          <div class="stat-item"><span class="stat-dot" style="background:var(--primary)"></span> 总计 <b id="statTotal">0</b></div>
+          <div class="stat-item"><span class="stat-dot" style="background:var(--success)"></span> 有GPS <b id="statGps">0</b></div>
+          <div class="stat-item"><span class="stat-dot" style="background:var(--warning)"></span> 无GPS <b id="statNoGps">0</b></div>
+          <div class="stat-item"><span class="stat-dot" style="background:#7c3aed"></span> 已处理 <b id="statDone">0</b></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row3: 水印配置 -->
+    <div class="card" id="configCard">
+      <div class="card-header" style="cursor:pointer">
+        <span>⚙ 水印配置</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="event.stopPropagation();loadPhotoInfo()" title="从列表中选择一张照片，加载其GPS信息">加载照片信息</button>
+          <span id="configToggle" onclick="toggleConfig()" style="font-size:12px;color:var(--text2);cursor:pointer">收起 ▲</span>
+        </div>
+      </div>
+      <div class="card-body" id="configBody">
+        <div class="config-grid">
+          <div class="form-group">
+            <div class="form-label"><span>项目名称</span><label class="switch toggle"><input type="checkbox" id="showProject" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="projectName" placeholder="例：XX工程勘察">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>备注</span><label class="switch toggle"><input type="checkbox" id="showRemark" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="remarkText" placeholder="自定义备注内容">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>地址</span><label class="switch toggle"><input type="checkbox" id="showAddress" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="addressText" placeholder="自动从GPS逆地理编码获取">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>GCJ坐标</span><label class="switch toggle"><input type="checkbox" id="showCoords" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="coordsText" placeholder="经度E，纬度N（高德GCJ-02坐标）">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>拍摄日期</span><label class="switch toggle"><input type="checkbox" id="showDate" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="dateText" placeholder="YYYY-MM-DD（自动从EXIF获取）">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>静态地图</span><label class="switch toggle"><input type="checkbox" id="showMap" checked><span class="slider"></span></label></div>
+            <div class="zoom-row">
+              <span class="zoom-label">缩放级别</span>
+              <input type="number" id="mapZoom" min="3" max="18" value="15" step="1">
+              <span class="zoom-range">3-18</span>
+            </div>
+            <div id="mapPreview" style="margin-top:8px;display:none">
+              <img id="mapPreviewImg" src="" style="width:100%;max-width:350px;border-radius:8px;border:1px solid var(--border)">
+            </div>
+          </div>
+        </div>
+        <!-- 操作按钮 -->
+        <div class="btn-group" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="startBatchProcess()" id="processBtn" style="flex:1">批量加水印</button>
+          <button class="btn btn-success" onclick="clearAll()" style="flex:1">清空</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 下载区域 -->
+    <div class="action-card">
+      <div class="btn-group">
+        <button class="btn btn-success" onclick="downloadAll()" id="downloadBtn" disabled style="flex:1">生成压缩包</button>
+        <button class="btn btn-success" onclick="saveToAlbum()" id="albumBtn" disabled style="flex:1">保存到相册</button>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div id="progressArea" style="display:none">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      <div class="progress-text" id="progressText">准备中...</div>
+    </div>
+
+    <!-- Log -->
+    <div class="card" id="logCard">
+      <div class="card-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none';this.querySelector('span:last-child').textContent=this.nextElementSibling.style.display==='none'?'展开 ▼':'收起 ▲'" style="cursor:pointer">
+        <span>处理日志</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();exportDebugInfo()" title="导出配置+日志，方便反馈问题">导出</button>
+          <span style="font-size:12px;color:var(--text2)">展开 ▼</span>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0;display:none">
+        <div class="log-area" id="logArea"></div>
+      </div>
+    </div>
+
+    <!-- 高德 Key -->
+    <div class="card" id="amapCard" style="border:1px dashed var(--border)">
+      <div class="card-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none';this.querySelector('span:last-child').textContent=this.nextElementSibling.style.display==='none'?'展开 ▼':'收起 ▲'" style="cursor:pointer;background:var(--primary-light)">
+        <span>高德 Web 服务 Key</span>
+        <span style="font-size:12px;color:var(--text2)">展开 ▼</span>
+      </div>
+      <div class="card-body" style="display:none;padding:10px 18px">
+        <input type="text" class="form-input" id="amapKey" value="1b67b1cda76952d5d05398af1dc1ba3e" placeholder="请输入高德 Web 服务 Key">
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">申请地址：<a href="https://console.amap.com/dev/key/app" target="_blank">https://console.amap.com/dev/key/app</a></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Preview Modal -->
+  <div class="modal-overlay" id="previewModal">
+    <div class="modal-content">
+      <button class="modal-close" onclick="closePreview()">✕</button>
+      <img id="previewImg" src="">
+      <div class="modal-info" id="previewInfo"></div>
+    </div>
+  </div>
+
+  <!-- Hidden file inputs -->
+  <input type="file" id="fileInput" multiple accept="image/jpeg" style="display:none">
+
+  <!-- Hidden canvas -->
+  <canvas id="watermarkCanvas" style="display:none"></canvas>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+  <!-- App -->
+  <script src="js/coord-transform.js"></script>
+  <script src="js/exif-utils.js"></script>
+  <script src="js/watermark.js"></script>
+  <script src="js/app.js"></script>
+
+  <script>
+    function toggleConfig() {
+      const body = document.getElementById('configBody')
+      const toggle = document.getElementById('configToggle')
+      if (body.style.display === 'none') {
+        body.style.display = ''
+        toggle.textContent = '收起 ▲'
+      } else {
+        body.style.display = 'none'
+        toggle.textContent = '展开 ▼'
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,1855 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>水印相机</title>
+  <style>
+    * { margin:0; padding:0; box-sizing: border-box; }
+    :root {
+      --bg: #f5f7fa; --card: #fff; --primary: #10b981; --primary-light: #ecfdf5;
+      --text: #1e293b; --text2: #64748b; --border: #e2e8f0; --danger: #ef4444;
+      --success: #10b981; --warning: #f59e0b; --radius: 10px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+
+    /* Header */
+    .header { background: #10b981; border-radius: var(--radius); padding: 12px 18px; }
+    .header h1 { font-size: 18px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* Card */
+    .card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .card-header { padding: 12px 18px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; display: flex; align-items: center; justify-content: space-between; color: var(--text); }
+    .card-body { padding: 16px 18px; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: #059669; }
+    .btn-primary:disabled { background: #6ee7b7; cursor: not-allowed; }
+    .btn-outline { background: #fff; color: var(--text2); border: 1px solid var(--border); }
+    .btn-outline:hover { border-color: #94a3b8; color: var(--text); }
+    .btn-danger { background: #fff; color: var(--danger); border: 1px solid #fecaca; }
+    .btn-danger:hover { background: #fef2f2; border-color: #f87171; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #059669; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-block { width: 100%; }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* Form */
+    .form-group { margin-bottom: 14px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-label { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 6px; }
+    .form-input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; transition: all 0.2s; background: #fafbfc; }
+    .form-input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+    .form-input::placeholder { color: #94a3b8; font-size: 12px; }
+
+    /* Toggle */
+    .switch { position: relative; display: inline-block; width: 32px; height: 18px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch .slider { position: absolute; top:0; left:0; right:0; bottom:0; background: #cbd5e1; border-radius: 18px; cursor: pointer; transition: 0.25s; }
+    .switch .slider:before { content: ''; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: #fff; border-radius: 50%; transition: 0.25s; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+    .switch input:checked + .slider { background: var(--primary); }
+    .switch input:checked + .slider:before { transform: translateX(14px); }
+
+    /* Photo grid */
+    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+    .photo-item { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; background: #f1f5f9; cursor: pointer; border: 1.5px solid transparent; transition: all 0.2s; }
+    .photo-item:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.1); }
+    .photo-item.selected { border: 3px solid #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.2); }
+    .photo-item.select-mode { cursor: crosshair; }
+    .photo-item.select-mode:hover { border-color: #ef4444; box-shadow: 0 4px 12px rgba(239,68,68,0.15); }
+    .photo-item img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-item .badge { position: absolute; top: 4px; right: 4px; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; color: #fff; }
+    .badge-gps { background: var(--success); }
+    .badge-nogps { background: var(--warning); }
+    .badge-done { background: var(--primary); }
+    .photo-item .filename { position: absolute; bottom: 0; left: 0; right: 0; padding: 3px 6px; background: rgba(0,0,0,0.55); color: #fff; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Stats bar */
+    .stats-bar { display: flex; gap: 20px; font-size: 12px; flex-wrap: wrap; }
+    .stat-item { display: flex; align-items: center; gap: 5px; color: var(--text2); }
+    .stat-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .stat-item b { color: var(--text); font-weight: 600; }
+
+    /* Config grid */
+    .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+    .config-full { grid-column: 1 / -1; }
+
+    /* Section divider inside config */
+    .config-section-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin: 4px 0 8px; grid-column: 1 / -1; }
+    .config-section-title:first-child { margin-top: 0; }
+
+    /* Zoom input row */
+    .zoom-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .zoom-row input[type="number"] { width: 60px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none; background: #fafbfc; text-align: center; }
+    .zoom-row input[type="number"]:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+    .zoom-label { font-size: 12px; color: var(--text2); white-space: nowrap; }
+    .zoom-range { font-size: 11px; color: #94a3b8; }
+
+    /* Progress */
+    .progress-bar { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s; }
+    .progress-text { font-size: 12px; color: var(--text2); margin-top: 6px; text-align: center; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .modal-content { max-width: 90vw; max-height: 90vh; position: relative; }
+    .modal-content img { max-width: 100%; max-height: 85vh; border-radius: 8px; }
+    .modal-close { position: absolute; top: -12px; right: -12px; width: 32px; height: 32px; border-radius: 50%; background: #fff; border: none; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .modal-info { background: rgba(0,0,0,0.7); color: #fff; padding: 10px 16px; border-radius: 0 0 8px 8px; font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap; }
+
+    /* Amap key */
+    .amap-key-section { padding: 10px 14px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; }
+    .amap-key-section label { font-size: 12px; color: #92400e; display: block; margin-bottom: 4px; }
+
+    /* Log area */
+    .log-area { height: 160px; overflow-y: auto; background: #0f172a; color: #cbd5e1; padding: 10px 12px; border-radius: 8px; font-family: 'Consolas', 'Monaco', 'SF Mono', monospace; font-size: 11px; line-height: 1.6; }
+    .log-area .log-ok { color: #34d399; }
+    .log-area .log-warn { color: #fbbf24; }
+    .log-area .log-err { color: #f87171; }
+
+    /* Animation */
+    @keyframes fadeIn { from { opacity:0; transform: translateY(5px); } to { opacity:1; transform: translateY(0); } }
+    .photo-item { animation: fadeIn 0.25s ease; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+    /* Action area */
+    .action-card { background: #fff; border-radius: var(--radius); border: 1px solid var(--border); padding: 14px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .action-card .btn-group { gap: 10px; }
+
+    @media (max-width: 640px) {
+      .config-grid { grid-template-columns: 1fr; }
+      .photo-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+      .btn-group { flex-direction: column; }
+      .btn-group .btn { width: 100%; }
+      .container { padding: 12px; gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>水印相机</h1>
+  </div>
+
+    <!-- Row1: 照片列表 -->
+    <div class="card" id="photoCard">
+      <div class="card-header">
+        <span>照片列表（<span id="photoCount">0</span> 张）</span>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">选择照片</button>
+      </div>
+      <div class="card-body">
+        <div class="photo-grid" id="photoGrid"></div>
+        <div id="photoEmpty" style="text-align:center;padding:32px 16px;color:var(--text2)">
+          <div style="font-size:40px;margin-bottom:8px">📷</div>
+          <div>暂无照片，点击上方按钮或拖拽文件夹到页面添加</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row2: 统计 -->
+    <div class="card" id="statsCard">
+      <div class="card-body" style="padding:10px 18px">
+        <div class="stats-bar">
+          <div class="stat-item"><span class="stat-dot" style="background:var(--primary)"></span> 总计 <b id="statTotal">0</b></div>
+          <div class="stat-item"><span class="stat-dot" style="background:var(--success)"></span> 有GPS <b id="statGps">0</b></div>
+          <div class="stat-item"><span class="stat-dot" style="background:var(--warning)"></span> 无GPS <b id="statNoGps">0</b></div>
+          <div class="stat-item"><span class="stat-dot" style="background:#7c3aed"></span> 已处理 <b id="statDone">0</b></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row3: 水印配置 -->
+    <div class="card" id="configCard">
+      <div class="card-header" style="cursor:pointer">
+        <span>⚙ 水印配置</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="event.stopPropagation();loadPhotoInfo()" title="从列表中选择一张照片，加载其GPS信息">加载照片信息</button>
+          <span id="configToggle" onclick="toggleConfig()" style="font-size:12px;color:var(--text2);cursor:pointer">收起 ▲</span>
+        </div>
+      </div>
+      <div class="card-body" id="configBody">
+        <div class="config-grid">
+          <div class="form-group">
+            <div class="form-label"><span>项目名称</span><label class="switch toggle"><input type="checkbox" id="showProject" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="projectName" placeholder="例：XX工程勘察">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>备注</span><label class="switch toggle"><input type="checkbox" id="showRemark" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="remarkText" placeholder="自定义备注内容">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>地址</span><label class="switch toggle"><input type="checkbox" id="showAddress" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="addressText" placeholder="自动从GPS逆地理编码获取">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>GCJ坐标</span><label class="switch toggle"><input type="checkbox" id="showCoords" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="coordsText" placeholder="经度E，纬度N（高德GCJ-02坐标）">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>拍摄日期</span><label class="switch toggle"><input type="checkbox" id="showDate" checked><span class="slider"></span></label></div>
+            <input type="text" class="form-input" id="dateText" placeholder="YYYY-MM-DD（自动从EXIF获取）">
+          </div>
+          <div class="form-group">
+            <div class="form-label"><span>静态地图</span><label class="switch toggle"><input type="checkbox" id="showMap" checked><span class="slider"></span></label></div>
+            <div class="zoom-row">
+              <span class="zoom-label">缩放级别</span>
+              <input type="number" id="mapZoom" min="3" max="18" value="15" step="1">
+              <span class="zoom-range">3-18</span>
+            </div>
+            <div id="mapPreview" style="margin-top:8px;display:none">
+              <img id="mapPreviewImg" src="" style="width:100%;max-width:350px;border-radius:8px;border:1px solid var(--border)">
+            </div>
+          </div>
+        </div>
+        <!-- 操作按钮 -->
+        <div class="btn-group" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="startBatchProcess()" id="processBtn" style="flex:1">批量加水印</button>
+          <button class="btn btn-success" onclick="clearAll()" style="flex:1">清空</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 下载区域 -->
+    <div class="action-card">
+      <div class="btn-group">
+        <button class="btn btn-success" onclick="downloadAll()" id="downloadBtn" disabled style="flex:1">生成压缩包</button>
+        <button class="btn btn-success" onclick="saveToAlbum()" id="albumBtn" disabled style="flex:1">保存到相册</button>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div id="progressArea" style="display:none">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      <div class="progress-text" id="progressText">准备中...</div>
+    </div>
+
+    <!-- Log -->
+    <div class="card" id="logCard">
+      <div class="card-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none';this.querySelector('span:last-child').textContent=this.nextElementSibling.style.display==='none'?'展开 ▼':'收起 ▲'" style="cursor:pointer">
+        <span>处理日志</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();exportDebugInfo()" title="导出配置+日志，方便反馈问题">导出</button>
+          <span style="font-size:12px;color:var(--text2)">展开 ▼</span>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0;display:none">
+        <div class="log-area" id="logArea"></div>
+      </div>
+    </div>
+
+    <!-- 高德 Key -->
+    <div class="card" id="amapCard" style="border:1px dashed var(--border)">
+      <div class="card-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none';this.querySelector('span:last-child').textContent=this.nextElementSibling.style.display==='none'?'展开 ▼':'收起 ▲'" style="cursor:pointer;background:var(--primary-light)">
+        <span>高德 Web 服务 Key</span>
+        <span style="font-size:12px;color:var(--text2)">展开 ▼</span>
+      </div>
+      <div class="card-body" style="display:none;padding:10px 18px">
+        <input type="text" class="form-input" id="amapKey" value="1b67b1cda76952d5d05398af1dc1ba3e" placeholder="请输入高德 Web 服务 Key">
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">申请地址：<a href="https://console.amap.com/dev/key/app" target="_blank">https://console.amap.com/dev/key/app</a></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Preview Modal -->
+  <div class="modal-overlay" id="previewModal">
+    <div class="modal-content">
+      <button class="modal-close" onclick="closePreview()">✕</button>
+      <img id="previewImg" src="">
+      <div class="modal-info" id="previewInfo"></div>
+    </div>
+  </div>
+
+  <!-- Hidden file inputs -->
+  <input type="file" id="fileInput" multiple accept="image/jpeg" style="display:none">
+
+  <!-- Hidden canvas -->
+  <canvas id="watermarkCanvas" style="display:none"></canvas>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+  <!-- App -->
+  <script>
+/**
+ * coord-transform.js - GCJ02(高德) ↔ WGS84(GPS) 坐标转换
+ * 迭代逼近法，精度 <1米
+ */
+
+const CoordTransform = (() => {
+  const PI = Math.PI
+  const A = 6378245.0        // 长半轴
+  const EE = 0.00669342162296594323  // 扁率
+
+  function _transformLat(x, y) {
+    let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x))
+    ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0
+    ret += (20.0 * Math.sin(y * PI) + 40.0 * Math.sin(y / 3.0 * PI)) * 2.0 / 3.0
+    ret += (160.0 * Math.sin(y / 12.0 * PI) + 320 * Math.sin(y * PI / 30.0)) * 2.0 / 3.0
+    return ret
+  }
+
+  function _transformLng(x, y) {
+    let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x))
+    ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0
+    ret += (20.0 * Math.sin(x * PI) + 40.0 * Math.sin(x / 3.0 * PI)) * 2.0 / 3.0
+    ret += (150.0 * Math.sin(x / 12.0 * PI) + 300.0 * Math.sin(x / 30.0 * PI)) * 2.0 / 3.0
+    return ret
+  }
+
+  /**
+   * WGS84 → GCJ02
+   * @param {number} wgsLng - WGS84经度
+   * @param {number} wgsLat - WGS84纬度
+   * @returns {{lng: number, lat: number}} GCJ02坐标
+   */
+  function wgs84ToGcj02(wgsLng, wgsLat) {
+    let dLat = _transformLat(wgsLng - 105.0, wgsLat - 35.0)
+    let dLng = _transformLng(wgsLng - 105.0, wgsLat - 35.0)
+    const radLat = wgsLat / 180.0 * PI
+    let magic = Math.sin(radLat)
+    magic = 1 - EE * magic * magic
+    const sqrtMagic = Math.sqrt(magic)
+    dLat = (dLat * 180.0) / ((A * (1 - EE)) / (magic * sqrtMagic) * PI)
+    dLng = (dLng * 180.0) / (A / sqrtMagic * Math.cos(radLat) * PI)
+    return { lng: wgsLng + dLng, lat: wgsLat + dLat }
+  }
+
+  /**
+   * GCJ02 → WGS84（迭代逼近法，精度<1米）
+   * @param {number} gcjLng - GCJ02经度
+   * @param {number} gcjLat - GCJ02纬度
+   * @returns {{lng: number, lat: number}} WGS84坐标
+   */
+  function gcj02ToWgs84(gcjLng, gcjLat) {
+    let wgsLng = gcjLng, wgsLat = gcjLat
+    for (let i = 0; i < 5; i++) {
+      const gcj = wgs84ToGcj02(wgsLng, wgsLat)
+      wgsLng += gcjLng - gcj.lng
+      wgsLat += gcjLat - gcj.lat
+    }
+    return { lng: wgsLng, lat: wgsLat }
+  }
+
+  return { wgs84ToGcj02, gcj02ToWgs84 }
+})()
+
+</script>
+  <script>
+/**
+ * exif-utils.js - EXIF 读取/写入工具
+ * 基于 piexifjs 库，浏览器端完整保留和写入 EXIF GPS
+ */
+
+const ExifUtils = (() => {
+
+  /**
+   * 从 File 对象读取 EXIF 数据
+   * @param {File} file
+   * @returns {Promise<{exifObj: object|null, gps: {lat:number, lng:number, latRef:string, lngRef:string}|null, date: string|null}>}
+   */
+  async function readExif(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = function(e) {
+        const dataUrl = e.target.result
+      try {
+        const exifObj = piexif.load(dataUrl)
+
+        // 提取 GPS
+        const gps = extractGps(exifObj)
+
+        // 提取拍摄日期
+        const date = extractDate(exifObj)
+
+        // 提取方向标签
+        const orientation = extractOrientation(exifObj)
+
+        resolve({ exifObj, gps, date, orientation })
+      } catch (err) {
+        // 无 EXIF 或解析失败
+        resolve({ exifObj: null, gps: null, date: null, orientation: 1 })
+      }
+    }
+    reader.onerror = () => resolve({ exifObj: null, gps: null, date: null, orientation: 1 })
+      reader.readAsDataURL(file)
+    })
+  }
+
+  /**
+   * 从 piexif 对象中提取 GPS 坐标（WGS84 十进制度）
+   */
+  function extractGps(exifObj) {
+    if (!exifObj || !exifObj.GPS) return null
+    const gps = exifObj.GPS
+
+    try {
+      const latRat = gps[piexif.GPSIFD.GPSLatitude]
+      const lngRat = gps[piexif.GPSIFD.GPSLongitude]
+      const latRef = gps[piexif.GPSIFD.GPSLatitudeRef] || 'N'
+      const lngRef = gps[piexif.GPSIFD.GPSLongitudeRef] || 'E'
+
+      if (!latRat || !lngRat) return null
+
+      const lat = rationalToDecimal(latRat) * (latRef === 'S' ? -1 : 1)
+      const lng = rationalToDecimal(lngRat) * (lngRef === 'W' ? -1 : 1)
+
+      if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return null
+
+      return { lat, lng, latRef, lngRef }
+    } catch (e) {
+      return null
+    }
+  }
+
+  /**
+   * EXIF 有理数（度/分/秒）转十进制度
+   * piexif 返回格式: [[num, den], [num, den], [num, den]]
+   */
+  function rationalToDecimal(rat) {
+    if (!Array.isArray(rat) || rat.length < 3) return NaN
+    const deg = rat[0][0] / rat[0][1]
+    const min = rat[1][0] / rat[1][1]
+    const sec = rat[2][0] / rat[2][1]
+    return deg + min / 60.0 + sec / 3600.0
+  }
+
+  /**
+   * 十进制度转 EXIF 有理数（度/分/秒）
+   */
+  function decimalToRational(decimal, precision) {
+    precision = precision || 1000000
+    const absDeg = Math.abs(decimal)
+    const deg = Math.floor(absDeg)
+    const minFloat = (absDeg - deg) * 60
+    const min = Math.floor(minFloat)
+    const secFloat = (minFloat - min) * 60
+    const secNum = Math.round(secFloat * precision)
+    
+    return [
+      [deg, 1],
+      [min, 1],
+      [secNum, precision]
+    ]
+  }
+
+  /**
+   * 提取 EXIF Orientation（方向标签）
+   * 1=正常，2=水平翻转，3=旋转180°，4=垂直翻转，
+   * 5=水平翻转+270°，6=顺时针90°，7=水平翻转+90°，8=逆时针90°
+   */
+  function extractOrientation(exifObj) {
+    if (!exifObj || !exifObj['0th']) return 1
+    // piexif.ImageIFD.Orientation 可能未定义，直接用标签号 274
+    const tag = (piexif.ImageIFD && piexif.ImageIFD.Orientation) || 274
+    const val = exifObj['0th'][tag]
+    return (typeof val === 'number' && val >= 1 && val <= 8) ? val : 1
+  }
+
+  /**
+   * 提取拍摄日期
+   */
+  function extractDate(exifObj) {
+    if (!exifObj) return null
+    // 优先 ExifIFD.DateTimeOriginal
+    const dto = exifObj.Exif && exifObj.Exif[piexif.ExifIFD.DateTimeOriginal]
+    if (dto) return dto
+    // 回退到 IFD0.DateTime
+    const dt = exifObj['0th'] && exifObj['0th'][piexif.ImageIFD.DateTime]
+    return dt || null
+  }
+
+  /**
+   * 将 WGS84 坐标注入 EXIF GPS IFD
+   * @param {object} exifObj - piexif 对象（可为 null，会自动创建）
+   * @param {number} wgsLng - WGS84 经度
+   * @param {number} wgsLat - WGS84 纬度
+   * @returns {object} 更新后的 piexif 对象
+   */
+  function injectGps(exifObj, wgsLng, wgsLat) {
+    if (!exifObj) {
+      exifObj = {
+        '0th': {},
+        'Exif': {},
+        'GPS': {},
+        '1st': {},
+        'Interop': {}
+      }
+    }
+    if (!exifObj.GPS) exifObj.GPS = {}
+    if (!exifObj['0th']) exifObj['0th'] = {}
+
+    const latRef = wgsLat >= 0 ? 'N' : 'S'
+    const lngRef = wgsLng >= 0 ? 'E' : 'W'
+
+    exifObj.GPS[piexif.GPSIFD.GPSLatitudeRef] = latRef
+    exifObj.GPS[piexif.GPSIFD.GPSLongitudeRef] = lngRef
+    exifObj.GPS[piexif.GPSIFD.GPSLatitude] = decimalToRational(Math.abs(wgsLat))
+    exifObj.GPS[piexif.GPSIFD.GPSLongitude] = decimalToRational(Math.abs(wgsLng))
+    // GPS 版本 ID
+    exifObj.GPS[piexif.GPSIFD.GPSVersionID] = [2, 3, 0, 0]
+
+    // 重置 Orientation 为 1（水印后的图片已经是正确方向，避免查看器再次旋转）
+    const orientTag = (piexif.ImageIFD && piexif.ImageIFD.Orientation) || 274
+    exifObj['0th'][orientTag] = 1
+
+    return exifObj
+  }
+
+  /**
+   * 将 piexif 对象写入 dataURL
+   * @param {string} dataUrl - 原始图片 dataURL
+   * @param {object} exifObj - piexif 对象
+   * @returns {string} 带 EXIF 的 dataURL
+   */
+  function insertExif(dataUrl, exifObj) {
+    try {
+      const exifBytes = piexif.dump(exifObj)
+      return piexif.insert(exifBytes, dataUrl)
+    } catch (e) {
+      console.warn('插入EXIF失败:', e)
+      return dataUrl
+    }
+  }
+
+  /**
+   * dataURL → Uint8Array (用于 JSZip)
+   */
+  function dataUrlToUint8Array(dataUrl) {
+    const base64 = dataUrl.split(',')[1]
+    const binaryStr = atob(base64)
+    const bytes = new Uint8Array(binaryStr.length)
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i)
+    }
+    return bytes
+  }
+
+  /**
+   * File → dataURL
+   */
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = e => resolve(e.target.result)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  /**
+   * File → Image (获取原始尺寸)
+   */
+  function fileToImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file)
+      const img = new Image()
+      img.onload = () => {
+        resolve(img)
+        // 不立即释放，后续还需要用
+      }
+      img.onerror = reject
+      img.src = url
+    })
+  }
+
+  return {
+    readExif, extractGps, extractDate, extractOrientation,
+    injectGps, insertExif,
+    dataUrlToUint8Array, fileToDataUrl, fileToImage,
+    decimalToRational, rationalToDecimal
+  }
+})()
+
+</script>
+  <script>
+/**
+ * watermark.js - Canvas 水印绘制
+ * 底部白条布局：原图 + 底部800px信息栏（不遮图片）
+ * 左侧文字(标签上/值下) + 右侧静态地图(700x700)
+ * 幼圆字体，白底黑字，标题"勘察记录"大两号
+ */
+
+const Watermark = (() => {
+
+  /**
+   * 给图片添加水印
+   */
+  function addWatermark(input, config) {
+    const canvas = document.getElementById('watermarkCanvas')
+    const ctx = canvas.getContext('2d')
+
+    // 支持 Image / ImageBitmap / Canvas 输入
+    const imgW = input.naturalWidth || input.width
+    const imgH = input.naturalHeight || input.height
+    const barH = 800
+
+    canvas.width = imgW
+    canvas.height = imgH + barH
+
+    // 1. 绘制原图
+    ctx.drawImage(input, 0, 0, imgW, imgH)
+
+    // 2. 绘制底部白条
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, imgH, imgW, barH)
+
+    // 3. 顶部装饰线
+    ctx.strokeStyle = '#1a73e8'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.moveTo(0, imgH)
+    ctx.lineTo(imgW, imgH)
+    ctx.stroke()
+
+    // 4. 字体
+    const padding = 48
+    const fontFamily = '"YouYuan", "\u5E7C\u5706", "FangSong", "Microsoft YaHei", "PingFang SC", sans-serif'
+
+    // 5. 地图区域（右侧）— 固定700x700，API请求350x350(scale=2实际返回700x700)
+    const hasMapImg = config.showMap && config.mapImg
+    const mapMargin = Math.round(imgW * 0.01)
+    const mapSize = 700
+    const mapAreaW = mapSize + mapMargin * 2
+
+    // 6. 绘制标题 "勘察记录"
+    const titleFontSize = 100
+    ctx.save()
+    ctx.font = 'bold ' + titleFontSize + 'px ' + fontFamily
+    ctx.fillStyle = '#000000'
+    ctx.textBaseline = 'top'
+    const titleX = padding
+    const titleY = imgH + padding
+    ctx.fillText('\u52D8\u5BDF\u8BB0\u5F55', titleX, titleY)
+
+    // 标题下方蓝色装饰线
+    const titleBottom = titleY + titleFontSize + 12
+    ctx.strokeStyle = '#1a73e8'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(titleX, titleBottom)
+    ctx.lineTo(titleX + ctx.measureText('\u52D8\u5BDF\u8BB0\u5F55').width, titleBottom)
+    ctx.stroke()
+    ctx.restore()
+
+    // 7. 构建信息条目
+    const items = buildItems(config)
+
+    // 8. 两列布局 — 标签在上(灰色小字)，值在下(黑色大字)
+    const textAreaWidth = imgW - mapAreaW - padding * 2
+    const colGap = 32
+    const colWidth = (textAreaWidth - colGap) / 2
+    const colStartY = titleBottom + 36
+    const labelFontSize = 36
+    const valueFontSize = 52
+    const itemHeight = 110
+
+    // 尽量均匀分配：优先填满左列
+    const perCol = Math.ceil(items.length / 2)
+    const leftItems = items.slice(0, perCol)
+    const rightItems = items.slice(perCol)
+
+    drawLabelValueColumn(ctx, leftItems, padding, colStartY, colWidth, labelFontSize, valueFontSize, itemHeight, fontFamily)
+    drawLabelValueColumn(ctx, rightItems, padding + colWidth + colGap, colStartY, colWidth, labelFontSize, valueFontSize, itemHeight, fontFamily)
+
+    // 9. 右侧静态地图
+    const mapX = imgW - mapSize - mapMargin
+    const mapY = imgH + (barH - mapSize) / 2
+
+    if (hasMapImg) {
+      ctx.save()
+      ctx.fillStyle = '#e8f0fe'
+      drawRoundRect(ctx, mapX - 3, mapY - 3, mapSize + 6, mapSize + 6, 10)
+      ctx.fill()
+      drawRoundRect(ctx, mapX, mapY, mapSize, mapSize, 8)
+      ctx.clip()
+      ctx.drawImage(config.mapImg, mapX, mapY, mapSize, mapSize)
+      ctx.restore()
+      ctx.save()
+      ctx.strokeStyle = '#1a73e8'
+      ctx.lineWidth = 2
+      drawRoundRect(ctx, mapX, mapY, mapSize, mapSize, 8)
+      ctx.stroke()
+      ctx.restore()
+    } else {
+      ctx.save()
+      ctx.fillStyle = '#f0f0f0'
+      drawRoundRect(ctx, mapX, mapY, mapSize, mapSize, 8)
+      ctx.fill()
+      ctx.strokeStyle = '#cccccc'
+      ctx.lineWidth = 1
+      drawRoundRect(ctx, mapX, mapY, mapSize, mapSize, 8)
+      ctx.stroke()
+      ctx.font = '36px ' + fontFamily
+      ctx.fillStyle = '#999999'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('\u5730\u56FE\u4E0D\u53EF\u7528', mapX + mapSize / 2, mapY + mapSize / 2)
+      ctx.restore()
+    }
+
+    // 10. 安全导出
+    try {
+      return canvas.toDataURL('image/jpeg', 1.0)
+    } catch (e) {
+      console.warn('Canvas.toDataURL \u5931\u8D25\uFF1A', e.message)
+      return fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily)
+    }
+  }
+
+  /**
+   * 降级方案：不含地图
+   */
+  function fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily) {
+    // 创建全新的canvas，避免iOS Safari上已污染canvas无法重置的问题
+    const oldCanvas = document.getElementById('watermarkCanvas')
+    const canvas = document.createElement('canvas')
+    canvas.id = 'watermarkCanvas'
+    canvas.style.display = 'none'
+    oldCanvas.parentNode.replaceChild(canvas, oldCanvas)
+    const ctx = canvas.getContext('2d')
+    canvas.width = imgW
+    canvas.height = imgH + barH
+
+    ctx.drawImage(input, 0, 0, imgW, imgH)
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, imgH, imgW, barH)
+
+    ctx.strokeStyle = '#1a73e8'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.moveTo(0, imgH)
+    ctx.lineTo(imgW, imgH)
+    ctx.stroke()
+
+    const titleFontSize = 100
+    ctx.save()
+    ctx.font = 'bold ' + titleFontSize + 'px ' + fontFamily
+    ctx.fillStyle = '#000000'
+    ctx.textBaseline = 'top'
+    ctx.fillText('\u52D8\u5BDF\u8BB0\u5F55', padding, imgH + padding)
+    ctx.restore()
+
+    const items = buildItems(config)
+    const colGap = 32
+    const colWidth = (imgW - padding * 3) / 2
+    const colStartY = imgH + padding + titleFontSize + 48
+    const labelFontSize = 36
+    const valueFontSize = 52
+    const itemHeight = 110
+    const perCol = Math.ceil(items.length / 2)
+    drawLabelValueColumn(ctx, items.slice(0, perCol), padding, colStartY, colWidth, labelFontSize, valueFontSize, itemHeight, fontFamily)
+    drawLabelValueColumn(ctx, items.slice(perCol), padding + colWidth + colGap, colStartY, colWidth, labelFontSize, valueFontSize, itemHeight, fontFamily)
+
+    try {
+      return canvas.toDataURL('image/jpeg', 1.0)
+    } catch (e2) {
+      console.error('\u964D\u7EA7\u5BFC\u51FA\u4E5F\u5931\u8D25\uFF1A', e2.message)
+      return null
+    }
+  }
+
+  /**
+   * 构建信息条目
+   */
+  function buildItems(config) {
+    const items = []
+    if (config.showProject && config.projectName) {
+      items.push({ label: '\u9879\u76EE\u540D\u79F0', value: config.projectName })
+    }
+    if (config.showAddress && config.address) {
+      items.push({ label: '\u5730\u5740', value: config.address })
+    }
+    if (config.showCoords && config.coordStr) {
+      items.push({ label: 'GCJ坐标', value: config.coordStr })
+    }
+    if (config.showDate && config.dateStr) {
+      items.push({ label: '\u65E5\u671F', value: config.dateStr })
+    }
+    if (config.showRemark && config.remark) {
+      items.push({ label: '\u5907\u6CE8', value: config.remark })
+    }
+    return items
+  }
+
+  /**
+   * 绘制单列：标签在上(灰色小字) + 值在下(黑色大字)
+   */
+  function drawLabelValueColumn(ctx, items, x, startY, maxWidth, labelFontSize, valueFontSize, itemHeight, fontFamily) {
+    ctx.save()
+    ctx.textBaseline = 'top'
+
+    items.forEach(function(item, i) {
+      const y = startY + i * itemHeight
+
+      // 标签（灰色小字）
+      ctx.font = labelFontSize + 'px ' + fontFamily
+      ctx.fillStyle = '#888888'
+      ctx.fillText(item.label, x, y)
+
+      // 值（黑色大字）
+      ctx.font = valueFontSize + 'px ' + fontFamily
+      ctx.fillStyle = '#000000'
+      let valueText = item.value
+      const maxValWidth = maxWidth - 4
+      if (ctx.measureText(valueText).width > maxValWidth) {
+        while (valueText.length > 0 && ctx.measureText(valueText + '\u2026').width > maxValWidth) {
+          valueText = valueText.slice(0, -1)
+        }
+        valueText += '\u2026'
+      }
+      ctx.fillText(valueText, x, y + labelFontSize + 6)
+    })
+
+    ctx.restore()
+  }
+
+  /**
+   * 绘制圆角矩形路径
+   */
+  function drawRoundRect(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2)
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.lineTo(x + w - r, y)
+    ctx.arcTo(x + w, y, x + w, y + r, r)
+    ctx.lineTo(x + w, y + h - r)
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r)
+    ctx.lineTo(x + r, y + h)
+    ctx.arcTo(x, y + h, x, y + h - r, r)
+    ctx.lineTo(x, y + r)
+    ctx.arcTo(x, y, x + r, y, r)
+    ctx.closePath()
+  }
+
+  /**
+   * 加载高德静态地图
+   */
+  function loadMapImage(gcjLng, gcjLat, amapKey, size, zoom) {
+    return new Promise(function(resolve) {
+      if (!amapKey) { resolve(null); return }
+
+      var z = zoom || 15
+      const mapSize = Math.min(size || 350, 1024)
+      const apiUrl = 'https://restapi.amap.com/v3/staticmap?location=' + gcjLng + ',' + gcjLat + '&zoom=' + z + '&size=' + mapSize + '*' + mapSize + '&scale=2&markers=large,,:' + gcjLng + ',' + gcjLat + '&key=' + amapKey
+      const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(apiUrl)
+
+      window.__lastMapApiUrl = apiUrl
+      console.log('[地图] API地址:', apiUrl)
+      console.log('[地图] 代理地址:', proxyUrl)
+
+      var fetchOpts = {}
+      if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
+        fetchOpts.signal = AbortSignal.timeout(10000)
+      }
+
+      fetch(proxyUrl, fetchOpts)
+        .then(function(res) {
+          console.log('[地图] 代理响应:', res.status)
+          if (!res.ok) throw new Error('HTTP ' + res.status)
+          return res.blob()
+        })
+        .then(function(blob) {
+          console.log('[地图] blob成功, 类型:', blob.type, '大小:', blob.size)
+          var reader = new FileReader()
+          reader.onloadend = function() {
+            var dataUrl = reader.result
+            var img = new Image()
+            img.onload = function() {
+              console.log('[地图] 加载成功:', this.naturalWidth, 'x', this.naturalHeight)
+              this._fromProxy = true
+              this._apiUrl = apiUrl
+              resolve(this)
+            }
+            img.onerror = function() {
+              console.warn('[地图] dataURL加载失败')
+              loadDirect(apiUrl, resolve)
+            }
+            img.src = dataUrl
+          }
+          reader.onerror = function() {
+            console.warn('[地图] FileReader失败')
+            loadDirect(apiUrl, resolve)
+          }
+          reader.readAsDataURL(blob)
+        })
+        .catch(function(proxyErr) {
+          console.warn('[地图] 代理失败:', proxyErr.message)
+          loadDirect(apiUrl, resolve)
+        })
+    })
+  }
+
+  function loadDirect(apiUrl, resolve) {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = function() {
+      console.log('[地图] 直接加载成功(跨域)')
+      this._taintsCanvas = true
+      this._apiUrl = apiUrl
+      resolve(this)
+    }
+    img.onerror = function() {
+      console.warn('[地图] 直接加载失败')
+      resolve(null)
+    }
+    img.src = apiUrl
+  }
+
+  return { addWatermark: addWatermark, loadMapImage: loadMapImage }
+})()
+
+</script>
+  <script>
+/**
+ * app.js - 主应用逻辑
+ * 浏览器端批量照片水印工具
+ * 单列布局：照片列表(含选择按钮)→统计→配置→操作→日志
+ */
+
+// ===== 全局状态 =====
+const state = {
+  files: [],
+  exifData: new Map(),
+  processed: new Map(),
+  currentLocation: null,
+  processing: false,
+  mapCache: new Map(),
+  startTime: null,
+  // 统一水印数据（从一张照片加载，所有照片共用）
+  sharedMapImg: null,
+  sharedWgsLng: null,
+  sharedWgsLat: null,
+  sharedGcjLng: null,
+  sharedGcjLat: null,
+  sharedAddress: null,
+  // 照片选择模式
+  selectMode: false,
+  selectedIdx: -1,
+}
+
+// ===== 初始化 =====
+document.addEventListener('DOMContentLoaded', function() {
+  setupDragDrop()
+  setupFileInputs()
+  loadSavedConfig()
+})
+
+// ===== 拖拽支持 =====
+function setupDragDrop() {
+  var body = document.body
+  body.addEventListener('dragover', function(e) { e.preventDefault() })
+  body.addEventListener('drop', function(e) {
+    e.preventDefault()
+    handleDroppedFiles(e.dataTransfer)
+  })
+}
+
+function handleDroppedFiles(dataTransfer) {
+  var files = []
+  var promises = []
+
+  if (dataTransfer.items) {
+    for (var i = 0; i < dataTransfer.items.length; i++) {
+      var item = dataTransfer.items[i]
+      if (item.kind === 'file') {
+        var entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null
+        if (entry && entry.isDirectory) {
+          promises.push(readDirectoryRecursive(entry).then(function(f) { files.push.apply(files, f) }))
+        } else {
+          var f = item.getAsFile()
+          if (f && isImageFile(f)) files.push(f)
+        }
+      }
+    }
+  } else {
+    for (var j = 0; j < dataTransfer.files.length; j++) {
+      if (isImageFile(dataTransfer.files[j])) files.push(dataTransfer.files[j])
+    }
+  }
+
+  if (promises.length > 0) {
+    Promise.all(promises).then(function() { addFiles(files) })
+  } else {
+    addFiles(files)
+  }
+}
+
+function readDirectoryRecursive(dirEntry) {
+  return new Promise(function(resolve) {
+    var reader = dirEntry.createReader()
+    var allFiles = []
+
+    function readBatch() {
+      reader.readEntries(function(entries) {
+        if (entries.length === 0) { resolve(allFiles); return }
+        var subPromises = []
+        for (var i = 0; i < entries.length; i++) {
+          if (entries[i].isFile) {
+            subPromises.push(new Promise(function(r) { entries[i].file(function(f) { r(f) }) }).then(function(file) {
+              if (isImageFile(file)) allFiles.push(file)
+            }))
+          } else if (entries[i].isDirectory) {
+            subPromises.push(readDirectoryRecursive(entries[i]).then(function(f) { allFiles.push.apply(allFiles, f) }))
+          }
+        }
+        Promise.all(subPromises).then(readBatch)
+      })
+    }
+    readBatch()
+  })
+}
+
+function isImageFile(file) {
+  if (!file) return false
+  if (file.type === 'image/jpeg' || file.type === 'image/png') return true
+  var name = (file.name || '').toLowerCase()
+  return name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png')
+}
+
+// ===== 文件输入 =====
+function setupFileInputs() {
+  var fileInput = document.getElementById('fileInput')
+  if (fileInput) {
+    fileInput.addEventListener('change', function(e) {
+      var files = Array.from(e.target.files).filter(isImageFile)
+      if (files.length > 0) addFiles(files)
+      e.target.value = ''
+    })
+  }
+}
+
+// ===== 添加文件 =====
+async function addFiles(newFiles) {
+  var existingNames = new Set(state.files.map(function(f) { return f.name + '_' + f.size }))
+  var unique = newFiles.filter(function(f) { return !existingNames.has(f.name + '_' + f.size) })
+
+  if (unique.length === 0) {
+    showToast('没有新的照片可添加')
+    return
+  }
+
+  log('[添加文件] 收到 ' + newFiles.length + ' 张，新增 ' + unique.length + ' 张', 'ok')
+  state.files.push.apply(state.files, unique)
+
+  for (var i = 0; i < unique.length; i++) {
+    var f = unique[i]
+    log('  读取EXIF: ' + f.name + ' (' + Math.round(f.size / 1024) + 'KB)')
+    try {
+      var exifResult = await ExifUtils.readExif(f)
+      state.exifData.set(f.name + '_' + f.size, exifResult)
+      var gpsInfo = exifResult && exifResult.gps
+        ? 'GPS OK WGS84(' + exifResult.gps.lat.toFixed(6) + ',' + exifResult.gps.lng.toFixed(6) + ')'
+        : '无GPS'
+      log('    EXIF: ' + gpsInfo + (exifResult && exifResult.date ? ' | 日期:' + exifResult.date : ''), exifResult && exifResult.gps ? 'ok' : 'warn')
+    } catch (e) {
+      log('    EXIF读取失败: ' + e.message, 'err')
+      state.exifData.set(f.name + '_' + f.size, null)
+    }
+  }
+
+  updateUI()
+  showToast('已添加 ' + unique.length + ' 张照片')
+}
+
+// ===== 更新 UI =====
+function updateUI() {
+  var grid = document.getElementById('photoGrid')
+  var photoCount = document.getElementById('photoCount')
+  var photoEmpty = document.getElementById('photoEmpty')
+
+  var gpsCount = 0, noGpsCount = 0, doneCount = 0
+  state.files.forEach(function(f) {
+    var key = f.name + '_' + f.size
+    var exif = state.exifData.get(key)
+    if (exif && exif.gps) gpsCount++
+    else noGpsCount++
+    if (state.processed.has(key)) doneCount++
+  })
+
+  document.getElementById('statTotal').textContent = state.files.length
+  document.getElementById('statGps').textContent = gpsCount
+  document.getElementById('statNoGps').textContent = noGpsCount
+  document.getElementById('statDone').textContent = doneCount
+
+  photoCount.textContent = state.files.length
+
+  if (state.files.length === 0) {
+    grid.innerHTML = ''
+    photoEmpty.style.display = ''
+    document.getElementById('downloadBtn').disabled = true
+    return
+  }
+
+  photoEmpty.style.display = 'none'
+  grid.innerHTML = ''
+  state.files.forEach(function(file, idx) {
+    var key = file.name + '_' + file.size
+    var exif = state.exifData.get(key)
+    var isProcessed = state.processed.has(key)
+
+    var item = document.createElement('div')
+    item.className = 'photo-item'
+    if (state.selectMode) item.className += ' select-mode'
+    if (idx === state.selectedIdx) item.className += ' selected'
+
+    var thumbUrl = URL.createObjectURL(file)
+    var badgeHtml = isProcessed
+      ? '<span class="badge badge-done">✓</span>'
+      : (exif && exif.gps ? '<span class="badge badge-gps">GPS</span>' : '<span class="badge badge-nogps">无GPS</span>')
+
+    item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">' + badgeHtml + '<div class="filename">' + file.name + '</div>'
+    if (state.selectMode) {
+      item.addEventListener('click', function() { selectPhotoForInfo(idx) })
+    } else {
+      item.addEventListener('click', function() { showPreview(file, exif, isProcessed) })
+    }
+    grid.appendChild(item)
+  })
+}
+
+// ===== 预览 =====
+function showPreview(file, exif, isProcessed) {
+  var key = file.name + '_' + file.size
+  var modal = document.getElementById('previewModal')
+  var img = document.getElementById('previewImg')
+  var info = document.getElementById('previewInfo')
+
+  if (isProcessed) {
+    img.src = state.processed.get(key)
+  } else {
+    img.src = URL.createObjectURL(file)
+  }
+
+  var infoHtml = '<span>📁 ' + file.name + '</span>'
+  infoHtml += '<span>📦 ' + Math.round(file.size / 1024) + ' KB</span>'
+  if (exif && exif.gps) {
+    infoHtml += '<span>📍 WGS84: ' + exif.gps.lat.toFixed(6) + ', ' + exif.gps.lng.toFixed(6) + '</span>'
+  }
+  if (exif && exif.date) {
+    infoHtml += '<span>📅 ' + exif.date + '</span>'
+  }
+  info.innerHTML = infoHtml
+
+  modal.classList.add('active')
+}
+
+function closePreview() {
+  document.getElementById('previewModal').classList.remove('active')
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closePreview()
+    if (state.selectMode) {
+      state.selectMode = false
+      updateUI()
+    }
+  }
+})
+
+// ===== 加载照片信息（统一水印） =====
+async function loadPhotoInfo() {
+  if (state.files.length === 0) {
+    showToast('请先添加照片')
+    return
+  }
+
+  // 切换选择模式
+  state.selectMode = !state.selectMode
+  if (state.selectMode) {
+    state.selectedIdx = -1
+    showToast('请在照片列表中点选一张照片')
+  }
+  updateUI()
+}
+
+async function selectPhotoForInfo(idx) {
+  var file = state.files[idx]
+  var key = file.name + '_' + file.size
+  var exifResult = state.exifData.get(key)
+  var gps = exifResult && exifResult.gps ? exifResult.gps : null
+  var amapKey = document.getElementById('amapKey').value.trim()
+
+  // 标记选中
+  state.selectedIdx = idx
+  updateUI()
+
+  log('[加载照片信息] 选择: ' + file.name, 'ok')
+
+  if (!gps) {
+    // 尝试浏览器定位
+    log('[加载照片信息] 照片无EXIF GPS，尝试浏览器定位...', 'warn')
+    try {
+      var geoPos = await new Promise(function(resolve, reject) {
+        if (!navigator.geolocation) { reject(new Error('浏览器不支持定位')); return }
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true, timeout: 10000, maximumAge: 60000
+        })
+      })
+      var wgsLng = geoPos.coords.longitude
+      var wgsLat = geoPos.coords.latitude
+      var gcj = CoordTransform.wgs84ToGcj02(wgsLng, wgsLat)
+      state.sharedWgsLng = wgsLng
+      state.sharedWgsLat = wgsLat
+      state.sharedGcjLng = gcj.lng
+      state.sharedGcjLat = gcj.lat
+      log('[加载照片信息] 浏览器定位 GCJ02(' + gcj.lng.toFixed(6) + ',' + gcj.lat.toFixed(6) + ')', 'ok')
+    } catch (e) {
+      state.sharedWgsLng = state.sharedWgsLat = state.sharedGcjLng = state.sharedGcjLat = null
+      log('[加载照片信息] 浏览器定位也失败: ' + e.message, 'err')
+      showToast('无GPS信息，请选择有GPS的照片')
+      state.selectMode = false
+      updateUI()
+      return
+    }
+  } else {
+    state.sharedWgsLng = gps.lng
+    state.sharedWgsLat = gps.lat
+    var gcj = CoordTransform.wgs84ToGcj02(gps.lng, gps.lat)
+    state.sharedGcjLng = gcj.lng
+    state.sharedGcjLat = gcj.lat
+    log('[加载照片信息] EXIF GPS → GCJ02(' + gcj.lng.toFixed(6) + ',' + gcj.lat.toFixed(6) + ')', 'ok')
+  }
+
+  // 填充GCJ坐标输入框
+  var coordStr = state.sharedGcjLng.toFixed(6) + 'E, ' + state.sharedGcjLat.toFixed(6) + 'N'
+  document.getElementById('coordsText').value = coordStr
+
+  // 逆地理编码获取地址
+  if (amapKey && state.sharedGcjLng && state.sharedGcjLat) {
+    log('[加载照片信息] 正在逆地理编码...')
+    try {
+      var address = await reverseGeocode(state.sharedGcjLng, state.sharedGcjLat, amapKey)
+      state.sharedAddress = address
+      document.getElementById('addressText').value = address
+      log('[加载照片信息] 地址: ' + address, 'ok')
+    } catch (e) {
+      log('[加载照片信息] 逆地理编码失败: ' + e.message, 'warn')
+    }
+  }
+
+  // 自动填充拍摄日期
+  if (!document.getElementById('dateText').value.trim()) {
+    var autoDate = exifResult && exifResult.date
+      ? formatExifDate(exifResult.date)
+      : formatDate(new Date(file.lastModified))
+    document.getElementById('dateText').value = autoDate
+  }
+
+  // 加载静态地图
+  state.sharedMapImg = null
+  if (document.getElementById('showMap').checked && amapKey && state.sharedGcjLng && state.sharedGcjLat) {
+    log('[加载照片信息] 正在加载静态地图...')
+    try {
+      var cacheKey = state.sharedGcjLng.toFixed(4) + ',' + state.sharedGcjLat.toFixed(4)
+      if (state.mapCache.has(cacheKey)) {
+        state.sharedMapImg = state.mapCache.get(cacheKey)
+        log('[加载照片信息] 地图: 使用缓存', 'ok')
+      } else {
+        state.sharedMapImg = await Watermark.loadMapImage(state.sharedGcjLng, state.sharedGcjLat, amapKey, 350, parseInt(document.getElementById('mapZoom').value) || 15)
+        if (state.sharedMapImg) {
+          state.mapCache.set(cacheKey, state.sharedMapImg)
+          log('[加载照片信息] 地图: 加载成功 ' + state.sharedMapImg.naturalWidth + 'x' + state.sharedMapImg.naturalHeight, 'ok')
+        } else {
+          log('[加载照片信息] 地图: 加载失败', 'warn')
+        }
+      }
+    } catch (e) {
+      log('[加载照片信息] 地图加载失败: ' + e.message, 'warn')
+    }
+  }
+
+  // 更新地图预览
+  updateMapPreview()
+
+  // 退出选择模式
+  state.selectMode = false
+  updateUI()
+
+  showToast('照片信息已加载，请确认水印配置')
+}
+
+// ===== 更新地图预览 =====
+function updateMapPreview() {
+  var previewDiv = document.getElementById('mapPreview')
+  var previewImg = document.getElementById('mapPreviewImg')
+  if (!previewDiv || !previewImg) return
+
+  if (state.sharedMapImg) {
+    if (state.sharedMapImg._fromProxy) {
+      // 代理加载的同源图片，可安全使用canvas
+      var canvas = document.createElement('canvas')
+      canvas.width = state.sharedMapImg.naturalWidth || state.sharedMapImg.width
+      canvas.height = state.sharedMapImg.naturalHeight || state.sharedMapImg.height
+      var ctx = canvas.getContext('2d')
+      ctx.drawImage(state.sharedMapImg, 0, 0)
+      previewImg.src = canvas.toDataURL('image/png')
+    } else if (state.sharedMapImg._apiUrl) {
+      // 跨域直接加载，用原URL显示（Image可直接显示跨域图）
+      previewImg.src = state.sharedMapImg._apiUrl
+    } else {
+      previewImg.src = state.sharedMapImg.src
+    }
+    previewDiv.style.display = ''
+  } else {
+    previewDiv.style.display = 'none'
+  }
+}
+
+
+async function getCurrentLocation() {
+  var info = document.getElementById('locationInfo')
+  info.textContent = '⏳ 获取中...'
+
+  try {
+    var pos = await new Promise(function(resolve, reject) {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true, timeout: 15000, maximumAge: 0
+      })
+    })
+
+    var wgsLng = pos.coords.longitude
+    var wgsLat = pos.coords.latitude
+    var gcj = CoordTransform.wgs84ToGcj02(wgsLng, wgsLat)
+
+    state.currentLocation = {
+      wgsLng: wgsLng, wgsLat: wgsLat,
+      lng: gcj.lng, lat: gcj.lat,
+      address: ''
+    }
+
+    info.innerHTML = '✅ GCJ02: ' + gcj.lng.toFixed(6) + ', ' + gcj.lat.toFixed(6) + '<br>WGS84: ' + wgsLng.toFixed(6) + ', ' + wgsLat.toFixed(6)
+
+    var amapKey = document.getElementById('amapKey').value.trim()
+    if (amapKey) {
+      try {
+        var addr = await reverseGeocode(gcj.lng, gcj.lat, amapKey)
+        state.currentLocation.address = addr
+        info.innerHTML += '<br>📍 ' + addr
+        document.getElementById('addressText').value = addr
+      } catch (e) {
+        log('[定位] 逆地理编码失败: ' + e.message, 'warn')
+      }
+    }
+
+    showToast('定位成功')
+    log('[定位] 成功 GCJ02(' + gcj.lng.toFixed(6) + ',' + gcj.lat.toFixed(6) + ')', 'ok')
+  } catch (e) {
+    info.innerHTML = '❌ 定位失败: ' + e.message
+    showToast('定位失败，请检查浏览器定位权限')
+    log('[定位] 失败: ' + e.message, 'err')
+  }
+}
+
+// ===== 逆地理编码（JSONP 绕过 CORS）=====
+function reverseGeocode(lng, lat, amapKey) {
+  return new Promise(function(resolve, reject) {
+    if (!amapKey) { reject(new Error('无高德Key')); return }
+
+    var callbackName = '_amap_regeo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+
+    var script = document.createElement('script')
+    script.src = 'https://restapi.amap.com/v3/geocode/regeo?key=' + amapKey + '&location=' + lng + ',' + lat + '&extensions=base&callback=' + callbackName
+
+    var timer = setTimeout(function() {
+      delete window[callbackName]
+      if (script.parentNode) script.parentNode.removeChild(script)
+      reject(new Error('逆地理编码超时'))
+    }, 10000)
+
+    window[callbackName] = function(data) {
+      clearTimeout(timer)
+      delete window[callbackName]
+      if (script.parentNode) script.parentNode.removeChild(script)
+      if (data && data.status === '1' && data.regeocode) {
+        resolve(data.regeocode.formatted_address || '')
+      } else {
+        reject(new Error((data && data.info) || '逆地理编码失败'))
+      }
+    }
+
+    script.onerror = function() {
+      clearTimeout(timer)
+      delete window[callbackName]
+      if (script.parentNode) script.parentNode.removeChild(script)
+      reject(new Error('逆地理编码网络错误'))
+    }
+
+    document.head.appendChild(script)
+  })
+}
+
+// ===== 批量处理（使用统一水印） =====
+async function startBatchProcess() {
+  if (state.files.length === 0) return
+  if (state.processing) return
+
+  state.processing = true
+  state.processed.clear()
+  state.startTime = Date.now()
+
+  var progressArea = document.getElementById('progressArea')
+  var progressFill = document.getElementById('progressFill')
+  var progressText = document.getElementById('progressText')
+  var processBtn = document.getElementById('processBtn')
+  var logCard = document.getElementById('logCard')
+  var logArea = document.getElementById('logArea')
+
+  progressArea.style.display = ''
+  logCard.style.display = ''
+  logArea.innerHTML = ''
+  processBtn.disabled = true
+
+  var config = getConfig()
+  var total = state.files.length
+  var done = 0
+
+  // 使用统一水印数据
+  var useSharedGps = (state.sharedGcjLng != null && state.sharedGcjLat != null)
+  var address = config.address || state.sharedAddress || ''
+  var mapImg = state.sharedMapImg
+
+  log('🚀 开始批量处理，共 ' + total + ' 张照片', 'ok')
+  log('  统一水印模式: ' + (useSharedGps ? 'GCJ02(' + state.sharedGcjLng.toFixed(6) + ',' + state.sharedGcjLat.toFixed(6) + ')' : '无GPS'), useSharedGps ? 'ok' : 'warn')
+  log('  配置: 项目=' + (config.showProject ? config.projectName || '(空)' : '关') +
+      ' | 地址=' + (config.showAddress ? address || '(空)' : '关') +
+      ' | 坐标=' + (config.showCoords ? '开' : '关') +
+      ' | 备注=' + (config.showRemark ? config.remark || '(空)' : '关') +
+      ' | 日期=' + (config.showDate ? '开' : '关') +
+      ' | 地图=' + (config.showMap ? (mapImg ? '已加载' : '未加载') : '关'), 'ok')
+
+  for (var idx = 0; idx < state.files.length; idx++) {
+    var file = state.files[idx]
+    var key = file.name + '_' + file.size
+    var fileStart = Date.now()
+    try {
+      log('[' + (idx + 1) + '/' + total + '] ' + file.name + ' (' + Math.round(file.size / 1024) + 'KB)')
+
+      // 加载图片
+      var imgInput
+      try {
+        var bitmap = await createImageBitmap(file)
+        imgInput = bitmap
+      } catch (e) {
+        imgInput = await ExifUtils.fileToImage(file)
+      }
+
+      var exifResult = state.exifData.get(key)
+      var orientation = exifResult && exifResult.orientation ? exifResult.orientation : 1
+
+      // 日期：手动输入优先，否则从EXIF获取
+      var autoDate = exifResult && exifResult.date
+        ? formatExifDate(exifResult.date)
+        : formatDate(new Date(file.lastModified))
+      if (idx === 0 && !document.getElementById('dateText').value.trim()) {
+        document.getElementById('dateText').value = autoDate
+      }
+      var dateStr = config.dateText || autoDate
+
+      // 坐标字符串
+      var coordStr = config.coordsText || ''
+
+      var wmConfig = {
+        projectName: config.showProject ? config.projectName : '',
+        address: config.showAddress ? address : '',
+        remark: config.showRemark ? config.remark : '',
+        dateStr: config.showDate ? dateStr : '',
+        coordStr: config.showCoords ? coordStr : '',
+        showProject: config.showProject,
+        showAddress: config.showAddress,
+        showCoords: config.showCoords,
+        showRemark: config.showRemark,
+        showDate: config.showDate,
+        showMap: config.showMap,
+        mapImg: mapImg,
+        orientation: orientation
+      }
+
+      var watermarkedDataUrl = Watermark.addWatermark(imgInput, wmConfig)
+      if (!watermarkedDataUrl) {
+        throw new Error('水印绘制失败')
+      }
+
+      // 注入EXIF
+      var finalDataUrl = watermarkedDataUrl
+      var exifObj = exifResult && exifResult.exifObj ? exifResult.exifObj : null
+
+      if (useSharedGps) {
+        exifObj = ExifUtils.injectGps(exifObj, state.sharedWgsLng, state.sharedWgsLat)
+        finalDataUrl = ExifUtils.insertExif(watermarkedDataUrl, exifObj)
+      } else if (exifObj && orientation !== 1) {
+        var orientTag = (piexif.ImageIFD && piexif.ImageIFD.Orientation) || 274
+        if (!exifObj['0th']) exifObj['0th'] = {}
+        exifObj['0th'][orientTag] = 1
+        finalDataUrl = ExifUtils.insertExif(watermarkedDataUrl, exifObj)
+      }
+
+      state.processed.set(key, finalDataUrl)
+      log('  ✅ 完成 (' + (Date.now() - fileStart) + 'ms)', 'ok')
+
+    } catch (e) {
+      log('  ❌ 失败: ' + e.message, 'err')
+      console.error('[处理失败] ' + file.name, e)
+    }
+
+    done++
+    progressFill.style.width = (done / total * 100) + '%'
+    progressText.textContent = done + ' / ' + total + ' 已处理'
+  }
+
+  var totalCost = Date.now() - state.startTime
+  log('---')
+  log('🎉 全部完成！' + state.processed.size + '/' + total + ' 张成功，耗时 ' + (totalCost / 1000).toFixed(1) + 's', 'ok')
+  progressText.textContent = '完成！' + state.processed.size + '/' + total + ' 张'
+
+  state.processing = false
+  processBtn.disabled = false
+  document.getElementById('downloadBtn').disabled = state.processed.size === 0
+  document.getElementById('albumBtn').disabled = state.processed.size === 0
+
+  updateUI()
+  showToast('处理完成！' + state.processed.size + ' 张照片已加水印')
+}
+
+// ===== 生成压缩包 =====
+async function downloadAll() {
+  if (state.processed.size === 0) return
+
+  var downloadBtn = document.getElementById('downloadBtn')
+  downloadBtn.disabled = true
+  downloadBtn.textContent = '⏳ 打包中...'
+
+  try {
+    var zip = new JSZip()
+    var folder = zip.folder('watermarked')
+
+    state.processed.forEach(function(dataUrl, key) {
+      var fileName = key.replace(/_\d+$/, '.jpg')
+      var bytes = ExifUtils.dataUrlToUint8Array(dataUrl)
+      folder.file(fileName, bytes, { binary: true })
+    })
+
+    log('[下载] 开始打包 ' + state.processed.size + ' 张照片...', 'ok')
+    var blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' })
+
+    // 文件名：拍摄日期_项目名称_备注，空则跳过，全空则用当前日期时间
+    var parts = []
+    var shootingDate = document.getElementById('dateText').value.trim().replace(/-/g, '')
+    var projName = document.getElementById('projectName').value.trim()
+    var remarkVal = document.getElementById('remarkText').value.trim()
+    if (shootingDate) parts.push(shootingDate)
+    if (projName) parts.push(projName)
+    if (remarkVal) parts.push(remarkVal)
+    var zipName = parts.length > 0 ? parts.join('_') : formatDateCompact(new Date())
+    saveAs(blob, zipName + '.zip')
+
+    log('[下载] 打包完成，开始下载', 'ok')
+    showToast('下载成功！')
+  } catch (e) {
+    log('[下载] 失败: ' + e.message, 'err')
+    showToast('下载失败: ' + e.message)
+  }
+
+  downloadBtn.disabled = false
+  downloadBtn.textContent = '生成压缩包'
+}
+
+// ===== 清空 =====
+function clearAll() {
+  if (state.files.length > 0 && !confirm('确定清空所有照片？')) return
+
+  log('[清空] 清除 ' + state.files.length + ' 张照片及所有缓存', 'ok')
+  state.files = []
+  state.exifData.clear()
+  state.processed.clear()
+  state.mapCache.clear()
+  state.sharedMapImg = null
+  state.sharedWgsLng = state.sharedWgsLat = null
+  state.sharedGcjLng = state.sharedGcjLat = null
+  state.sharedAddress = null
+  state.selectMode = false
+  state.selectedIdx = -1
+
+  // 清除地图预览
+  var mapPreview = document.getElementById('mapPreview')
+  if (mapPreview) mapPreview.style.display = 'none'
+
+  document.getElementById('progressArea').style.display = 'none'
+
+  updateUI()
+}
+
+// ===== 保存到相册 =====
+async function saveToAlbum() {
+  if (state.processed.size === 0) return
+
+  var albumBtn = document.getElementById('albumBtn')
+  albumBtn.disabled = true
+  albumBtn.textContent = '保存中...'
+
+  try {
+    // 优先使用 Web Share API（iOS Safari 原生分享表单，可保存到相册）
+    if (navigator.share && navigator.canShare) {
+      var files = []
+      var idx = 0
+      state.processed.forEach(function(dataUrl, key) {
+        var byteString = atob(dataUrl.split(',')[1])
+        var mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0]
+        var ab = new ArrayBuffer(byteString.length)
+        var ia = new Uint8Array(ab)
+        for (var i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i)
+        }
+        var fileName = key.replace(/_\d+$/, '.jpg')
+        files.push(new File([ab], fileName, { type: 'image/jpeg' }))
+        idx++
+      })
+
+      var shareData = { files: files }
+      if (navigator.canShare(shareData)) {
+        await navigator.share(shareData)
+        log('[相册] 已通过分享保存', 'ok')
+        showToast('已保存到相册')
+        albumBtn.disabled = false
+        albumBtn.textContent = '保存到相册'
+        return
+      }
+    }
+
+    // 降级方案：逐张下载
+    log('[相册] 浏览器不支持直接保存到相册，将逐张下载', 'warn')
+    var count = 0
+    state.processed.forEach(function(dataUrl, key) {
+      var fileName = key.replace(/_\d+$/, '.jpg')
+      var a = document.createElement('a')
+      a.href = dataUrl
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      count++
+    })
+    log('[相册] 已下载 ' + count + ' 张照片', 'ok')
+    showToast('已下载 ' + count + ' 张照片，请在相册中查看')
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      log('[相册] 保存失败: ' + e.message, 'err')
+      showToast('保存失败: ' + e.message)
+    }
+  }
+
+  albumBtn.disabled = false
+  albumBtn.textContent = '📲 保存到相册'
+}
+
+// ===== 导出调试信息 =====
+function exportDebugInfo() {
+  var config = getConfig()
+  var now = new Date()
+
+  var debugInfo = {
+    exportTime: now.toISOString(),
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    platform: navigator.platform,
+    cookieEnabled: navigator.cookieEnabled,
+    onLine: navigator.onLine,
+    screenSize: screen.width + '×' + screen.height,
+    windowSize: window.innerWidth + '×' + window.innerHeight,
+
+    config: config,
+
+    fileCount: state.files.length,
+    files: state.files.map(function(f) {
+      var key = f.name + '_' + f.size
+      var exif = state.exifData.get(key)
+      return {
+        name: f.name,
+        sizeKB: Math.round(f.size / 1024),
+        type: f.type,
+        lastModified: new Date(f.lastModified).toISOString(),
+        hasGps: !!(exif && exif.gps),
+        gpsWgs84: (exif && exif.gps) ? { lat: exif.gps.lat.toFixed(6), lng: exif.gps.lng.toFixed(6) } : null,
+        exifDate: exif ? exif.date : null,
+        processed: state.processed.has(key)
+      }
+    }),
+
+    processedCount: state.processed.size,
+    hasLocation: !!state.currentLocation,
+    locationGcj02: state.currentLocation ? { lng: state.currentLocation.lng.toFixed(6), lat: state.currentLocation.lat.toFixed(6) } : null,
+
+    logs: []
+  }
+
+  // 收集日志区域内容
+  var logArea = document.getElementById('logArea')
+  if (logArea) {
+    var logLines = logArea.querySelectorAll('div')
+    for (var i = 0; i < logLines.length; i++) {
+      debugInfo.logs.push(logLines[i].textContent)
+    }
+  }
+
+  // 生成 JSON 文件并下载
+  var jsonStr = JSON.stringify(debugInfo, null, 2)
+  var blob = new Blob([jsonStr], { type: 'application/json' })
+  var url = URL.createObjectURL(blob)
+  var a = document.createElement('a')
+  a.href = url
+  a.download = 'watermark-debug-' + formatDateCompact(now) + '.json'
+  document.body.appendChild(a)
+  a.click()
+  setTimeout(function() {
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, 100)
+
+  showToast('调试信息已导出')
+  log('[导出] 调试信息已导出 ' + debugInfo.fileCount + ' 张照片，' + debugInfo.logs.length + ' 条日志', 'ok')
+}
+
+// ===== 配置 =====
+function getConfig() {
+  return {
+    projectName: document.getElementById('projectName').value.trim(),
+    address: document.getElementById('addressText').value.trim(),
+    remark: document.getElementById('remarkText').value.trim(),
+    amapKey: document.getElementById('amapKey').value.trim(),
+    showProject: document.getElementById('showProject').checked,
+    showAddress: document.getElementById('showAddress').checked,
+    showCoords: document.getElementById('showCoords').checked,
+    showRemark: document.getElementById('showRemark').checked,
+    showDate: document.getElementById('showDate').checked,
+    showMap: document.getElementById('showMap').checked,
+    mapZoom: parseInt(document.getElementById('mapZoom').value) || 15,
+    coordsText: document.getElementById('coordsText').value.trim(),
+    dateText: document.getElementById('dateText').value.trim(),
+  }
+}
+
+function saveConfig() {
+  var config = getConfig()
+  localStorage.setItem('watermarkConfig', JSON.stringify(config))
+}
+
+function loadSavedConfig() {
+  try {
+    var saved = JSON.parse(localStorage.getItem('watermarkConfig'))
+    if (!saved) return
+    if (saved.projectName) document.getElementById('projectName').value = saved.projectName
+    if (saved.address) document.getElementById('addressText').value = saved.address
+    if (saved.remark) document.getElementById('remarkText').value = saved.remark
+    if (saved.amapKey) document.getElementById('amapKey').value = saved.amapKey
+    if (saved.showProject !== undefined) document.getElementById('showProject').checked = saved.showProject
+    if (saved.showAddress !== undefined) document.getElementById('showAddress').checked = saved.showAddress
+    if (saved.showCoords !== undefined) document.getElementById('showCoords').checked = saved.showCoords
+    if (saved.showRemark !== undefined) document.getElementById('showRemark').checked = saved.showRemark
+    if (saved.showDate !== undefined) document.getElementById('showDate').checked = saved.showDate
+    if (saved.showMap !== undefined) document.getElementById('showMap').checked = saved.showMap
+    if (saved.mapZoom !== undefined) {
+      document.getElementById('mapZoom').value = saved.mapZoom
+    }
+    if (saved.coordsText) document.getElementById('coordsText').value = saved.coordsText
+    if (saved.dateText) document.getElementById('dateText').value = saved.dateText
+  } catch (e) {}
+}
+
+// ===== 工具函数 =====
+
+function formatExifDate(exifDate) {
+  if (!exifDate) return ''
+  // EXIF格式 "2024:01:15 10:30:00" → "2024-01-15"（仅日期）
+  return exifDate.replace(/^(\d{4}):(\d{2}):(\d{2}).*/, '$1-$2-$3')
+}
+
+function formatDate(date) {
+  var y = date.getFullYear()
+  var m = String(date.getMonth() + 1).padStart(2, '0')
+  var d = String(date.getDate()).padStart(2, '0')
+  return y + '-' + m + '-' + d
+}
+
+function formatDateCompact(date) {
+  var y = date.getFullYear()
+  var m = String(date.getMonth() + 1).padStart(2, '0')
+  var d = String(date.getDate()).padStart(2, '0')
+  var h = String(date.getHours()).padStart(2, '0')
+  var min = String(date.getMinutes()).padStart(2, '0')
+  return y + m + d + '_' + h + min
+}
+
+function log(msg, level) {
+  var logArea = document.getElementById('logArea')
+  if (!logArea) return
+  var cls = level === 'ok' ? 'log-ok' : level === 'warn' ? 'log-warn' : level === 'err' ? 'log-err' : ''
+  var line = document.createElement('div')
+  line.className = cls
+  line.textContent = msg
+  logArea.appendChild(line)
+  logArea.scrollTop = logArea.scrollHeight
+}
+
+function showToast(msg) {
+  var toast = document.getElementById('toast')
+  if (!toast) {
+    toast = document.createElement('div')
+    toast.id = 'toast'
+    toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 24px;background:#1f2937;color:#fff;border-radius:8px;font-size:14px;z-index:9999;opacity:0;transition:opacity 0.3s;pointer-events:none;'
+    document.body.appendChild(toast)
+  }
+  toast.textContent = msg
+  toast.style.opacity = '1'
+  clearTimeout(toast._timer)
+  toast._timer = setTimeout(function() { toast.style.opacity = '0' }, 2500)
+}
+
+// 自动保存配置
+document.querySelectorAll('#projectName,#addressText,#remarkText,#amapKey,#coordsText,#dateText').forEach(function(el) {
+  el.addEventListener('input', saveConfig)
+})
+// zoom输入框自动保存
+document.getElementById('mapZoom').addEventListener('input', function() {
+  // 限制范围3-18
+  var v = parseInt(this.value)
+  if (v < 3) this.value = 3
+  if (v > 18) this.value = 18
+  saveConfig()
+})
+document.querySelectorAll('input[type="checkbox"]').forEach(function(el) {
+  el.addEventListener('change', saveConfig)
+})
+
+</script>
+
+  <script>
+    function toggleConfig() {
+      const body = document.getElementById('configBody')
+      const toggle = document.getElementById('configToggle')
+      if (body.style.display === 'none') {
+        body.style.display = ''
+        toggle.textContent = '收起 ▲'
+      } else {
+        body.style.display = 'none'
+        toggle.textContent = '展开 ▼'
+      }
+    }
+  </script>
+</body>
+</html>
