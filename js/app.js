@@ -5,8 +5,6 @@
  */
 
 // ===== 全局状态 =====
-const AMAP_PROXY = 'https://white-bonus-98f5.784406877.workers.dev'
-
 const state = {
   files: [],
   exifData: new Map(),
@@ -268,6 +266,7 @@ async function selectPhotoForInfo(idx) {
   var key = file.name + '_' + file.size
   var exifResult = state.exifData.get(key)
   var gps = exifResult && exifResult.gps ? exifResult.gps : null
+  var amapKey = document.getElementById('amapKey').value.trim()
 
   // 标记选中
   state.selectedIdx = idx
@@ -315,10 +314,10 @@ async function selectPhotoForInfo(idx) {
   document.getElementById('coordsText').value = coordStr
 
   // 逆地理编码获取地址
-  if (state.sharedGcjLng && state.sharedGcjLat) {
+  if (amapKey && state.sharedGcjLng && state.sharedGcjLat) {
     log('[加载照片信息] 正在逆地理编码...')
     try {
-      var address = await reverseGeocode(state.sharedGcjLng, state.sharedGcjLat)
+      var address = await reverseGeocode(state.sharedGcjLng, state.sharedGcjLat, amapKey)
       state.sharedAddress = address
       document.getElementById('addressText').value = address
       log('[加载照片信息] 地址: ' + address, 'ok')
@@ -337,7 +336,7 @@ async function selectPhotoForInfo(idx) {
 
   // 加载静态地图
   state.sharedMapImg = null
-  if (document.getElementById('showMap').checked && state.sharedGcjLng && state.sharedGcjLat) {
+  if (document.getElementById('showMap').checked && amapKey && state.sharedGcjLng && state.sharedGcjLat) {
     log('[加载照片信息] 正在加载静态地图...')
     try {
       var cacheKey = state.sharedGcjLng.toFixed(4) + ',' + state.sharedGcjLat.toFixed(4)
@@ -345,7 +344,7 @@ async function selectPhotoForInfo(idx) {
         state.sharedMapImg = state.mapCache.get(cacheKey)
         log('[加载照片信息] 地图: 使用缓存', 'ok')
       } else {
-        state.sharedMapImg = await Watermark.loadMapImage(state.sharedGcjLng, state.sharedGcjLat, 350, parseInt(document.getElementById('mapZoom').value) || 15)
+        state.sharedMapImg = await Watermark.loadMapImage(state.sharedGcjLng, state.sharedGcjLat, amapKey, 350, parseInt(document.getElementById('mapZoom').value) || 15)
         if (state.sharedMapImg) {
           state.mapCache.set(cacheKey, state.sharedMapImg)
           log('[加载照片信息] 地图: 加载成功 ' + state.sharedMapImg.naturalWidth + 'x' + state.sharedMapImg.naturalHeight, 'ok')
@@ -419,13 +418,16 @@ async function getCurrentLocation() {
 
     info.innerHTML = '✅ GCJ02: ' + gcj.lng.toFixed(6) + ', ' + gcj.lat.toFixed(6) + '<br>WGS84: ' + wgsLng.toFixed(6) + ', ' + wgsLat.toFixed(6)
 
-    try {
-      var addr = await reverseGeocode(gcj.lng, gcj.lat)
-      state.currentLocation.address = addr
-      info.innerHTML += '<br>📍 ' + addr
-      document.getElementById('addressText').value = addr
-    } catch (e) {
-      log('[定位] 逆地理编码失败: ' + e.message, 'warn')
+    var amapKey = document.getElementById('amapKey').value.trim()
+    if (amapKey) {
+      try {
+        var addr = await reverseGeocode(gcj.lng, gcj.lat, amapKey)
+        state.currentLocation.address = addr
+        info.innerHTML += '<br>📍 ' + addr
+        document.getElementById('addressText').value = addr
+      } catch (e) {
+        log('[定位] 逆地理编码失败: ' + e.message, 'warn')
+      }
     }
 
     showToast('定位成功')
@@ -437,28 +439,41 @@ async function getCurrentLocation() {
   }
 }
 
-// ===== 逆地理编码（通过 Cloudflare Worker 代理，fetch 方式）=====
-function reverseGeocode(lng, lat) {
+// ===== 逆地理编码（JSONP 绕过 CORS）=====
+function reverseGeocode(lng, lat, amapKey) {
   return new Promise(function(resolve, reject) {
-    var url = AMAP_PROXY + '/regeo?location=' + encodeURIComponent(lng + ',' + lat)
-    var timer = setTimeout(function() { reject(new Error('逆地理编码超时')) }, 10000)
-    fetch(url, { signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined })
-      .then(function(res) {
-        clearTimeout(timer)
-        if (!res.ok) throw new Error('HTTP ' + res.status)
-        return res.json()
-      })
-      .then(function(data) {
-        if (data && data.status === '1' && data.regeocode) {
-          resolve(data.regeocode.formatted_address || '')
-        } else {
-          reject(new Error((data && data.info) || '逆地理编码失败'))
-        }
-      })
-      .catch(function(err) {
-        clearTimeout(timer)
-        reject(err)
-      })
+    if (!amapKey) { reject(new Error('无高德Key')); return }
+
+    var callbackName = '_amap_regeo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+
+    var script = document.createElement('script')
+    script.src = 'https://restapi.amap.com/v3/geocode/regeo?key=' + amapKey + '&location=' + lng + ',' + lat + '&extensions=base&callback=' + callbackName
+
+    var timer = setTimeout(function() {
+      delete window[callbackName]
+      if (script.parentNode) script.parentNode.removeChild(script)
+      reject(new Error('逆地理编码超时'))
+    }, 10000)
+
+    window[callbackName] = function(data) {
+      clearTimeout(timer)
+      delete window[callbackName]
+      if (script.parentNode) script.parentNode.removeChild(script)
+      if (data && data.status === '1' && data.regeocode) {
+        resolve(data.regeocode.formatted_address || '')
+      } else {
+        reject(new Error((data && data.info) || '逆地理编码失败'))
+      }
+    }
+
+    script.onerror = function() {
+      clearTimeout(timer)
+      delete window[callbackName]
+      if (script.parentNode) script.parentNode.removeChild(script)
+      reject(new Error('逆地理编码网络错误'))
+    }
+
+    document.head.appendChild(script)
   })
 }
 
@@ -798,6 +813,7 @@ function getConfig() {
     projectName: document.getElementById('projectName').value.trim(),
     address: document.getElementById('addressText').value.trim(),
     remark: document.getElementById('remarkText').value.trim(),
+    amapKey: document.getElementById('amapKey').value.trim(),
     showProject: document.getElementById('showProject').checked,
     showAddress: document.getElementById('showAddress').checked,
     showCoords: document.getElementById('showCoords').checked,
@@ -822,6 +838,7 @@ function loadSavedConfig() {
     if (saved.projectName) document.getElementById('projectName').value = saved.projectName
     if (saved.address) document.getElementById('addressText').value = saved.address
     if (saved.remark) document.getElementById('remarkText').value = saved.remark
+    if (saved.amapKey) document.getElementById('amapKey').value = saved.amapKey
     if (saved.showProject !== undefined) document.getElementById('showProject').checked = saved.showProject
     if (saved.showAddress !== undefined) document.getElementById('showAddress').checked = saved.showAddress
     if (saved.showCoords !== undefined) document.getElementById('showCoords').checked = saved.showCoords
@@ -830,6 +847,8 @@ function loadSavedConfig() {
     if (saved.showMap !== undefined) document.getElementById('showMap').checked = saved.showMap
     if (saved.mapZoom !== undefined) {
       document.getElementById('mapZoom').value = saved.mapZoom
+      var zoomValueEl = document.getElementById('mapZoomValue')
+      if (zoomValueEl) zoomValueEl.textContent = saved.mapZoom
     }
     if (saved.coordsText) document.getElementById('coordsText').value = saved.coordsText
     if (saved.dateText) document.getElementById('dateText').value = saved.dateText
@@ -886,15 +905,12 @@ function showToast(msg) {
 }
 
 // 自动保存配置
-document.querySelectorAll('#projectName,#addressText,#remarkText,#coordsText,#dateText').forEach(function(el) {
+document.querySelectorAll('#projectName,#addressText,#remarkText,#amapKey,#coordsText,#dateText').forEach(function(el) {
   el.addEventListener('input', saveConfig)
 })
-// zoom输入框自动保存
+// zoom滑动条自动保存 + 实时显示数值
 document.getElementById('mapZoom').addEventListener('input', function() {
-  // 限制范围3-18
-  var v = parseInt(this.value)
-  if (v < 3) this.value = 3
-  if (v > 18) this.value = 18
+  document.getElementById('mapZoomValue').textContent = this.value
   saveConfig()
 })
 document.querySelectorAll('input[type="checkbox"]').forEach(function(el) {

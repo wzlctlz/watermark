@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg viewBox='0 0 32 32' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='3' y='8' width='26' height='20' rx='4' fill='%2310b981' stroke='%23fff' stroke-width='1.5'/%3E%3Ccircle cx='16' cy='18' r='7' fill='%2305855a' stroke='%23fff' stroke-width='1.5'/%3E%3Ccircle cx='16' cy='18' r='4.5' fill='none' stroke='rgba(255,255,255,0.6)' stroke-width='1'/%3E%3Ccircle cx='16' cy='18' r='2.2' fill='%23fff' opacity='0.9'/%3E%3Crect x='7' y='11' width='3.5' height='2.5' rx='1.2' fill='rgba(251,191,36,0.9)'/%3E%3Crect x='12' y='5' width='8' height='4' rx='2' fill='%2305855a' stroke='%23fff' stroke-width='1'/%3E%3Ccircle cx='25' cy='11' r='1.5' fill='rgba(255,255,255,0.5)'/%3E%3C/svg%3E">
   <title>水印相机</title>
   <style>
     * { margin:0; padding:0; box-sizing: border-box; }
@@ -86,11 +87,12 @@
     .config-section-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin: 4px 0 8px; grid-column: 1 / -1; }
     .config-section-title:first-child { margin-top: 0; }
 
-    /* Zoom input row */
+    /* Zoom slider */
     .zoom-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-    .zoom-row input[type="number"] { width: 60px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none; background: #fafbfc; text-align: center; }
-    .zoom-row input[type="number"]:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
-    .zoom-label { font-size: 12px; color: var(--text2); white-space: nowrap; }
+    .zoom-row input[type="range"] { flex: 1; height: 6px; -webkit-appearance: none; appearance: none; background: var(--border); border-radius: 3px; outline: none; }
+    .zoom-row input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+    .zoom-row input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--primary); cursor: pointer; border: none; }
+    .zoom-value { font-size: 13px; font-weight: 600; color: var(--text); min-width: 20px; text-align: center; }
     .zoom-range { font-size: 11px; color: #94a3b8; }
 
     /* Progress */
@@ -226,9 +228,10 @@
           <div class="form-group">
             <div class="form-label"><span>静态地图</span><label class="switch toggle"><input type="checkbox" id="showMap" checked><span class="slider"></span></label></div>
             <div class="zoom-row">
-              <span class="zoom-label">缩放级别</span>
-              <input type="number" id="mapZoom" min="3" max="18" value="15" step="1">
-              <span class="zoom-range">3-18</span>
+              <span class="zoom-range">3</span>
+              <input type="range" id="mapZoom" min="3" max="18" value="15" step="1">
+              <span class="zoom-range">18</span>
+              <span class="zoom-value" id="mapZoomValue">15</span>
             </div>
             <div id="mapPreview" style="margin-top:8px;display:none">
               <img id="mapPreviewImg" src="" style="width:100%;max-width:350px;border-radius:8px;border:1px solid var(--border)">
@@ -255,6 +258,18 @@
     <div id="progressArea" style="display:none">
       <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
       <div class="progress-text" id="progressText">准备中...</div>
+    </div>
+
+    <!-- 高德 Key -->
+    <div class="card" style="border:1px dashed var(--border)">
+      <div class="card-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none';this.querySelector('span:last-child').textContent=this.nextElementSibling.style.display==='none'?'展开 ▼':'收起 ▲'" style="cursor:pointer;background:var(--primary-light)">
+        <span>高德 Web 服务 Key</span>
+        <span style="font-size:12px;color:var(--text2)">展开 ▼</span>
+      </div>
+      <div class="card-body" style="display:none;padding:10px 18px">
+        <input type="text" class="form-input" id="amapKey" placeholder="请输入高德 Web 服务 Key（用于逆地理编码和静态地图）">
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">申请地址：<a href="https://console.amap.com/dev/key/app" target="_blank">https://console.amap.com/dev/key/app</a></div>
+      </div>
     </div>
 
     <!-- Log -->
