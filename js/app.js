@@ -134,6 +134,16 @@ async function addFiles(newFiles) {
     log('  读取EXIF: ' + f.name + ' (' + Math.round(f.size / 1024) + 'KB)')
     try {
       var exifResult = await ExifUtils.readExif(f)
+      // 同时读取图片原始宽高
+      try {
+        var bmp = await createImageBitmap(f)
+        exifResult.imgWidth = bmp.width
+        exifResult.imgHeight = bmp.height
+        bmp.close()
+      } catch (e2) {
+        exifResult.imgWidth = 0
+        exifResult.imgHeight = 0
+      }
       state.exifData.set(f.name + '_' + f.size, exifResult)
       var gpsInfo = exifResult && exifResult.gps
         ? 'GPS OK WGS84(' + exifResult.gps.lat.toFixed(6) + ',' + exifResult.gps.lng.toFixed(6) + ')'
@@ -147,6 +157,30 @@ async function addFiles(newFiles) {
 
   updateUI()
   showToast('已添加 ' + unique.length + ' 张照片')
+}
+
+// ===== 分辨率标识计算 =====
+// 长边 / 1000 取整：0→未知 1→1K 2→2K 4→4K 8→8K 以上→1M
+function getResBadge(exif) {
+  if (!exif) return null
+  var w = exif.imgWidth || 0
+  var h = exif.imgHeight || 0
+  if (!w && !h) return null
+  var longEdge = Math.max(w, h)
+  var level = Math.floor(longEdge / 1000)
+  if (level <= 0) return null
+  var labels = {
+    1: { text: '1K', color: '#64748b' },
+    2: { text: '2K', color: '#3b82f6' },
+    3: { text: '3K', color: '#8b5cf6' },
+    4: { text: '4K', color: '#10b981' },
+    5: { text: '5K', color: '#10b981' },
+    6: { text: '6K', color: '#f59e0b' },
+    7: { text: '7K', color: '#f59e0b' },
+    8: { text: '8K', color: '#ef4444' },
+  }
+  if (level >= 9) return { text: '1M', color: '#dc2626' }
+  return labels[level] || { text: level + 'K', color: '#64748b' }
 }
 
 // ===== 更新 UI =====
@@ -195,7 +229,12 @@ function updateUI() {
       ? '<span class="badge badge-done">✓</span>'
       : (exif && exif.gps ? '<span class="badge badge-gps">GPS</span>' : '<span class="badge badge-nogps">无GPS</span>')
 
-    item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">' + badgeHtml + '<div class="filename">' + file.name + '</div>'
+    var resBadge = getResBadge(exif)
+    var resBadgeHtml = resBadge
+      ? '<span class="badge badge-res" style="background:' + resBadge.color + '">' + resBadge.text + '</span>'
+      : ''
+
+    item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">' + badgeHtml + resBadgeHtml + '<div class="filename">' + file.name + '</div>'
     if (state.selectMode) {
       item.addEventListener('click', function() { selectPhotoForInfo(idx) })
     } else {
@@ -218,8 +257,16 @@ function showPreview(file, exif, isProcessed) {
     img.src = URL.createObjectURL(file)
   }
 
-  var infoHtml = '<span>📁 ' + file.name + '</span>'
-  infoHtml += '<span>📦 ' + Math.round(file.size / 1024) + ' KB</span>'
+  var infoHtml = ''
+  // 文件大小（MB）
+  infoHtml += '<span>📦 ' + (file.size / (1024 * 1024)).toFixed(2) + ' MB</span>'
+  // 分辨率
+  var resBadge = getResBadge(exif)
+  if (resBadge) {
+    var w = exif.imgWidth || 0
+    var h = exif.imgHeight || 0
+    infoHtml += '<span>🖼 ' + resBadge.text + (w && h ? ' (' + w + '×' + h + ')' : '') + '</span>'
+  }
   if (exif && exif.gps) {
     infoHtml += '<span>📍 WGS84: ' + exif.gps.lat.toFixed(6) + ', ' + exif.gps.lng.toFixed(6) + '</span>'
   }
