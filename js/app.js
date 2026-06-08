@@ -23,6 +23,8 @@ const state = {
   // 照片选择模式
   selectMode: false,
   selectedIdx: -1,
+  // 连拍模式
+  burstMode: false,
 }
 
 // ===== 初始化 =====
@@ -30,6 +32,17 @@ document.addEventListener('DOMContentLoaded', function() {
   setupDragDrop()
   setupFileInputs()
   loadSavedConfig()
+
+  // 连拍模式复选框
+  var burstCheckbox = document.getElementById('burstMode')
+  var burstLabel = document.getElementById('burstLabel')
+  if (burstCheckbox && burstLabel) {
+    burstCheckbox.addEventListener('change', function() {
+      state.burstMode = this.checked
+      burstLabel.style.opacity = this.checked ? '1' : '0.5'
+      showToast(this.checked ? '连拍模式已开启，拍完一张会自动继续' : '连拍模式已关闭')
+    })
+  }
 })
 
 // ===== 拖拽支持 =====
@@ -118,10 +131,18 @@ function setupFileInputs() {
   // 调用系统原生相机拍照（单张，高质量，有EXIF）
   var cameraInput = document.getElementById('cameraInput')
   if (cameraInput) {
-    cameraInput.addEventListener('change', function(e) {
+    cameraInput.addEventListener('change', async function(e) {
       var files = Array.from(e.target.files).filter(isImageFile)
-      if (files.length > 0) addFiles(files)
-      e.target.value = ''
+      if (files.length > 0) {
+        await addFiles(files)
+        e.target.value = ''  // 重置，使下次拍照能触发change
+        // 连拍模式：延迟重新触发相机
+        if (state.burstMode) {
+          setTimeout(function() { cameraInput.click() }, 600)
+        }
+      } else {
+        e.target.value = ''
+      }
     })
   }
 }
@@ -196,7 +217,6 @@ function getResBadge(exif) {
 // ===== 更新 UI =====
 function updateUI() {
   var grid = document.getElementById('photoGrid')
-  var photoCount = document.getElementById('photoCount')
   var photoEmpty = document.getElementById('photoEmpty')
 
   var gpsCount = 0, noGpsCount = 0, doneCount = 0
@@ -212,8 +232,6 @@ function updateUI() {
   document.getElementById('statGps').textContent = gpsCount
   document.getElementById('statNoGps').textContent = noGpsCount
   document.getElementById('statDone').textContent = doneCount
-
-  photoCount.textContent = state.files.length
 
   if (state.files.length === 0) {
     grid.innerHTML = ''
@@ -244,7 +262,22 @@ function updateUI() {
       ? '<span class="badge badge-res" style="background:' + resBadge.color + '">' + resBadge.text + '</span>'
       : ''
 
-    item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">' + badgeHtml + resBadgeHtml + '<div class="filename">' + file.name + '</div>'
+    item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">'
+      + badgeHtml + resBadgeHtml
+      + '<div class="filename">' + file.name + '</div>'
+
+    // 删除按钮（右上角，悬浮显示）
+    var deleteBtn = document.createElement('button')
+    deleteBtn.className = 'btn-delete'
+    deleteBtn.textContent = '×'
+    deleteBtn.title = '删除此照片'
+    deleteBtn.addEventListener('click', (function(i) {
+      return function(e) {
+        e.stopPropagation()
+        removePhoto(i)
+      }
+    })(idx))
+    item.appendChild(deleteBtn)
     if (state.selectMode) {
       item.addEventListener('click', function() { selectPhotoForInfo(idx) })
     } else {
@@ -252,6 +285,20 @@ function updateUI() {
     }
     grid.appendChild(item)
   })
+}
+
+// ===== 删除照片 =====
+function removePhoto(idx) {
+  if (idx < 0 || idx >= state.files.length) return
+  var key = state.files[idx].name + '_' + state.files[idx].size
+  state.exifData.delete(key)
+  state.processed.delete(key)
+  state.files.splice(idx, 1)
+  if (state.selectedIdx === idx) state.selectedIdx = -1
+  if (state.selectedIdx > idx) state.selectedIdx--
+  log('[删除照片] 已删除第 ' + (idx + 1) + ' 张', 'ok')
+  renderPhotoList()
+  updateStats()
 }
 
 // ===== 预览 =====

@@ -71,11 +71,16 @@
     .photo-item.select-mode { cursor: crosshair; }
     .photo-item.select-mode:hover { border-color: #ef4444; box-shadow: 0 4px 12px rgba(239,68,68,0.15); }
     .photo-item img { width: 100%; height: 100%; object-fit: cover; }
-    .photo-item .badge { position: absolute; top: 4px; right: 4px; left: auto; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: 600; color: #fff; line-height: 1.2; }
+    /* 删除按钮：右上角，悬浮显示 */
+    .photo-item .btn-delete { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: rgba(239,68,68,0.85); color: #fff; border: none; font-size: 13px; line-height: 18px; text-align: center; cursor: pointer; z-index: 10; display: none; align-items: center; justify-content: center; padding: 0; }
+    .photo-item:hover .btn-delete { display: flex; }
+    /* 状态徽章（GPS/无GPS/已完成）：右上角，在删除按钮下方 */
+    .photo-item .badge { position: absolute; top: 26px; right: 4px; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: 600; color: #fff; line-height: 1.2; left: auto; display: block; }
     .badge-gps { background: var(--success); }
     .badge-nogps { background: var(--warning); }
     .badge-done { background: var(--primary); }
-    .badge-res { position: absolute; top: 4px; left: 4px; right: auto; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: 700; color: #fff; line-height: 1.2; }
+    /* 分辨率标识：左上角，独立定位不重叠 */
+    .photo-item .badge-res { position: absolute; top: 4px; left: 4px; right: auto; padding: 2px 5px; border-radius: 4px; font-size: 10px; font-weight: 700; color: #fff; line-height: 1.2; width: auto; }
     .photo-item .filename { position: absolute; bottom: 0; left: 0; right: 0; padding: 3px 6px; background: rgba(0,0,0,0.55); color: #fff; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* Stats bar */
@@ -175,10 +180,13 @@
     <!-- Row1: 照片列表 -->
     <div class="card" id="photoCard">
       <div class="card-header">
-        <span>照片列表（<span id="photoCount">0</span> 张）</span>
+        <span>照片列表</span>
         <div class="btn-group" style="gap:6px">
           <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">选择照片</button>
           <button class="btn btn-outline" id="btnCapture" onclick="document.getElementById('cameraInput').click()" title="调用系统相机拍照">📷 拍照</button>
+          <label class="btn btn-outline btn-sm" id="burstLabel" title="开启后每拍一张自动继续拍照" style="cursor:pointer;user-select:none;opacity:0.5">
+            <input type="checkbox" id="burstMode" style="margin-right:3px">连拍
+          </label>
         </div>
       </div>
       <div class="card-body">
