@@ -176,7 +176,10 @@
     <div class="card" id="photoCard">
       <div class="card-header">
         <span>照片列表（<span id="photoCount">0</span> 张）</span>
-        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">选择照片</button>
+        <div class="btn-group" style="gap:6px">
+          <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">选择照片</button>
+          <button class="btn btn-outline" id="btnCapture" onclick="document.getElementById('cameraInput').click()" title="调用系统相机拍照">📷 拍照</button>
+        </div>
       </div>
       <div class="card-body">
         <div class="photo-grid" id="photoGrid"></div>
@@ -313,7 +316,9 @@
   </div>
 
   <!-- Hidden file inputs -->
-  <input type="file" id="fileInput" multiple accept="image/jpeg" style="display:none">
+  <input type="file" id="fileInput" multiple accept="image/*" style="display:none">
+  <!-- 系统原生相机拍照（capture="environment"调用后置摄像头，不压缩，有完整EXIF） -->
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
 
   <!-- Hidden canvas -->
   <canvas id="watermarkCanvas" style="display:none"></canvas>

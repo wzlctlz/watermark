@@ -106,9 +106,19 @@ function isImageFile(file) {
 
 // ===== 文件输入 =====
 function setupFileInputs() {
+  // 从相册多选照片
   var fileInput = document.getElementById('fileInput')
   if (fileInput) {
     fileInput.addEventListener('change', function(e) {
+      var files = Array.from(e.target.files).filter(isImageFile)
+      if (files.length > 0) addFiles(files)
+      e.target.value = ''
+    })
+  }
+  // 调用系统原生相机拍照（单张，高质量，有EXIF）
+  var cameraInput = document.getElementById('cameraInput')
+  if (cameraInput) {
+    cameraInput.addEventListener('change', function(e) {
       var files = Array.from(e.target.files).filter(isImageFile)
       if (files.length > 0) addFiles(files)
       e.target.value = ''
