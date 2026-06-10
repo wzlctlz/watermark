@@ -216,19 +216,38 @@ function getResBadge(exif) {
   return labels[level] || { text: level + 'K', color: '#64748b' }
 }
 
-// ===== 大图缩放：超出安全尺寸时等比缩小 =====
-// 手机端 canvas 内存有限，超限照片在 addWatermark 前先缩小
-async function scaleImageIfNeeded(input) {
-  var MAX_DIM = 2048
+// ===== dataURL → Blob（释放 base64 字符串内存）=====
+function dataUrlToBlob(dataUrl) {
+  var parts = dataUrl.split(',')
+  var mime = parts[0].match(/:(.*?);/)[1]
+  var byteString = atob(parts[1])
+  var ab = new ArrayBuffer(byteString.length)
+  var ia = new Uint8Array(ab)
+  for (var i = 0; i < byteString.length; i++) {
+    ia[i] = byteString.charCodeAt(i)
+  }
+  return new Blob([ab], { type: mime })
+}
+
+// ===== Blob → dataURL（临时，用于 piexif EXIF 注入）=====
+function blobToDataUrl(blob) {
+  return new Promise(function(resolve) {
+    var reader = new FileReader()
+    reader.onloadend = function() { resolve(reader.result) }
+    reader.onerror = function() { resolve(null) }
+    reader.readAsDataURL(blob)
+  })
+}
+
+// ===== 缩放输入图片（仅在原图处理失败时降级使用）=====
+function scaleInput(input, maxDim) {
   var w = input.naturalWidth || input.width || 0
   var h = input.naturalHeight || input.height || 0
-  if (!w || !h) return input
-  if (w <= MAX_DIM && h <= MAX_DIM) return input
+  if (!w || !h || (w <= maxDim && h <= maxDim)) return input
 
-  var scale = MAX_DIM / Math.max(w, h)
+  var scale = maxDim / Math.max(w, h)
   var sW = Math.round(w * scale)
   var sH = Math.round(h * scale)
-  log('  ├─ 图片超大(' + w + 'x' + h + ')，缩放至 ' + sW + 'x' + sH, 'warn')
 
   var canvas = document.createElement('canvas')
   canvas.width = sW
@@ -236,10 +255,8 @@ async function scaleImageIfNeeded(input) {
   var ctx = canvas.getContext('2d')
   ctx.drawImage(input, 0, 0, sW, sH)
 
-  // 释放 ImageBitmap 内存
-  if (typeof input.close === 'function') {
-    input.close()
-  }
+  // 释放 ImageBitmap
+  if (typeof input.close === 'function') input.close()
 
   return canvas
 }
@@ -296,17 +313,24 @@ function updateUI() {
       + badgeHtml + resBadgeHtml
       + '<div class="filename">' + file.name + '</div>'
 
-    // 删除按钮（右上角，悬浮显示）
+    // 删除按钮（右上角）—— 用文件对象做唯一标识，避免索引在删除后错位
     var deleteBtn = document.createElement('button')
     deleteBtn.className = 'btn-delete'
     deleteBtn.textContent = '×'
     deleteBtn.title = '删除此照片'
-    deleteBtn.addEventListener('click', (function(i) {
-      return function(e) {
-        e.stopPropagation()
-        removePhoto(i)
-      }
-    })(idx))
+    deleteBtn.addEventListener('pointerdown', function(e) {
+      e.preventDefault()
+      e.stopPropagation()
+      // 通过文件引用找到当前索引，避免闭包捕获的索引过期
+      var currentIdx = state.files.indexOf(file)
+      if (currentIdx >= 0) removePhoto(currentIdx)
+    })
+    deleteBtn.addEventListener('click', function(e) {
+      e.preventDefault()
+      e.stopPropagation()
+      var currentIdx = state.files.indexOf(file)
+      if (currentIdx >= 0) removePhoto(currentIdx)
+    })
     item.appendChild(deleteBtn)
     if (state.selectMode) {
       item.addEventListener('click', function() { selectPhotoForInfo(idx) })
@@ -322,13 +346,14 @@ function removePhoto(idx) {
   if (idx < 0 || idx >= state.files.length) return
   var key = state.files[idx].name + '_' + state.files[idx].size
   state.exifData.delete(key)
+  var processedObj = state.processed.get(key)
+  if (processedObj && processedObj.blobUrl) URL.revokeObjectURL(processedObj.blobUrl)
   state.processed.delete(key)
   state.files.splice(idx, 1)
   if (state.selectedIdx === idx) state.selectedIdx = -1
   if (state.selectedIdx > idx) state.selectedIdx--
   log('[删除照片] 已删除第 ' + (idx + 1) + ' 张', 'ok')
-  renderPhotoList()
-  updateStats()
+  updateUI()
 }
 
 // ===== 预览 =====
@@ -339,7 +364,8 @@ function showPreview(file, exif, isProcessed) {
   var info = document.getElementById('previewInfo')
 
   if (isProcessed) {
-    img.src = state.processed.get(key)
+    var processedObj = state.processed.get(key)
+    img.src = processedObj ? processedObj.blobUrl : URL.createObjectURL(file)
   } else {
     img.src = URL.createObjectURL(file)
   }
@@ -668,9 +694,6 @@ async function startBatchProcess() {
         imgInput = await ExifUtils.fileToImage(file)
       }
 
-      // 大图缩放：手机端canvas内存有限，超限时缩到安全尺寸
-      imgInput = await scaleImageIfNeeded(imgInput)
-
       var exifResult = state.exifData.get(key)
       var orientation = exifResult && exifResult.orientation ? exifResult.orientation : 1
 
@@ -702,44 +725,100 @@ async function startBatchProcess() {
         orientation: orientation
       }
 
-      var watermarkedDataUrl = Watermark.addWatermark(imgInput, wmConfig)
+      // ===== 原图优先，失败时渐进缩放重试 =====
+      // addWatermark 现在返回 Blob（toBlob），不再返回 base64 字符串
+      // 优势：Blob 由浏览器管理可交换磁盘，不占 JS 堆内存；base64 每张占 8-15MB
+      var watermarkedBlob = await Watermark.addWatermark(imgInput, wmConfig)
 
-      // 释放 ImageBitmap 内存
+      // 释放第一次的 ImageBitmap
       if (isBitmap && imgInput && typeof imgInput.close === 'function') {
         imgInput.close()
+        imgInput = null
       }
 
-      if (!watermarkedDataUrl) {
-        throw new Error('水印绘制失败')
+      // 检查是否失败（toBlob 内存不足时返回 null 或极小 Blob）
+      var failed = !watermarkedBlob || watermarkedBlob.size < 100
+
+      if (failed) {
+        // 渐进降级：先 4096，再 2048
+        var retryDims = [4096, 2048]
+        for (var ri = 0; ri < retryDims.length; ri++) {
+          log('  ⚠️ 原尺寸处理失败(内存不足)，尝试缩小至 ' + retryDims[ri] + 'px 重试...', 'warn')
+
+          // 重新加载图片
+          try {
+            var retryBitmap = await createImageBitmap(file)
+            imgInput = scaleInput(retryBitmap, retryDims[ri])
+          } catch (e3) {
+            imgInput = await ExifUtils.fileToImage(file)
+            imgInput = scaleInput(imgInput, retryDims[ri])
+          }
+
+          // 清理旧 canvas
+          var wmCanvas = document.getElementById('watermarkCanvas')
+          if (wmCanvas) { var wmCtx = wmCanvas.getContext('2d'); wmCtx.clearRect(0,0,wmCanvas.width,wmCanvas.height); wmCanvas.width=1; wmCanvas.height=1 }
+
+          // GC间隔
+          await new Promise(function(r) { setTimeout(r, 100) })
+
+          watermarkedBlob = await Watermark.addWatermark(imgInput, wmConfig)
+
+          // 释放重试用输入
+          if (imgInput && typeof imgInput.close === 'function') imgInput.close()
+          imgInput = null
+
+          if (watermarkedBlob && watermarkedBlob.size >= 100) {
+            log('  ✅ 缩放至 ' + retryDims[ri] + 'px 后成功（画质有损）', 'ok')
+            failed = false
+            break
+          }
+        }
       }
 
-      // 校验 dataURL 有效性（防止 toDataURL 静默失败返回空数据）
-      if (watermarkedDataUrl.length < 100 || watermarkedDataUrl === 'data:,') {
-        throw new Error('canvas导出失败（可能内存不足），dataURL长度=' + watermarkedDataUrl.length)
+      if (failed) {
+        throw new Error('原图及降级均处理失败（内存不足）')
       }
 
-      // 注入EXIF
-      var finalDataUrl = watermarkedDataUrl
+      // ===== EXIF 注入 =====
+      // piexif 只接受 dataURL，需要临时将 Blob 转为 dataURL
+      // 处理完立即释放 dataURL 引用，避免占用 JS 堆
       var exifObj = exifResult && exifResult.exifObj ? exifResult.exifObj : null
+      var needExif = (useSharedGps || (exifObj && orientation !== 1))
 
-      if (useSharedGps) {
-        exifObj = ExifUtils.injectGps(exifObj, state.sharedWgsLng, state.sharedWgsLat)
-        finalDataUrl = ExifUtils.insertExif(watermarkedDataUrl, exifObj)
-      } else if (exifObj && orientation !== 1) {
-        var orientTag = (piexif.ImageIFD && piexif.ImageIFD.Orientation) || 274
-        if (!exifObj['0th']) exifObj['0th'] = {}
-        exifObj['0th'][orientTag] = 1
-        finalDataUrl = ExifUtils.insertExif(watermarkedDataUrl, exifObj)
+      var resultBlob = watermarkedBlob
+
+      if (needExif) {
+        // Blob → dataURL（临时，仅用于 piexif）
+        var tempDataUrl = await blobToDataUrl(watermarkedBlob)
+        watermarkedBlob = null  // 释放 Blob 引用
+
+        var finalDataUrl = tempDataUrl
+
+        if (useSharedGps) {
+          exifObj = ExifUtils.injectGps(exifObj, state.sharedWgsLng, state.sharedWgsLat)
+          finalDataUrl = ExifUtils.insertExif(tempDataUrl, exifObj)
+        } else if (exifObj && orientation !== 1) {
+          var orientTag = (piexif.ImageIFD && piexif.ImageIFD.Orientation) || 274
+          if (!exifObj['0th']) exifObj['0th'] = {}
+          exifObj['0th'][orientTag] = 1
+          finalDataUrl = ExifUtils.insertExif(tempDataUrl, exifObj)
+        }
+        tempDataUrl = null  // 释放原始 dataURL
+
+        // 校验最终 dataURL 有效性（防止 insertExif 损坏数据）
+        if (!finalDataUrl || finalDataUrl.length < 100 || finalDataUrl === 'data:,') {
+          log('  ⚠️ EXIF插入后数据异常，使用原始水印数据', 'warn')
+        } else {
+          // dataURL → Blob 存储
+          resultBlob = dataUrlToBlob(finalDataUrl)
+        }
+        finalDataUrl = null  // 释放 dataURL 引用
       }
 
-      // 校验最终 dataURL 有效性（防止 insertExif 损坏数据）
-      if (!finalDataUrl || finalDataUrl.length < 100 || finalDataUrl === 'data:,') {
-        log('  ⚠️ EXIF插入后数据异常，使用原始水印数据', 'warn')
-        finalDataUrl = watermarkedDataUrl
-      }
+      var resultBlobUrl = URL.createObjectURL(resultBlob)
+      state.processed.set(key, { blob: resultBlob, blobUrl: resultBlobUrl })
 
-      state.processed.set(key, finalDataUrl)
-      log('  ✅ 完成 (' + (Date.now() - fileStart) + 'ms) 大小=' + Math.round(finalDataUrl.length * 0.75 / 1024) + 'KB', 'ok')
+      log('  ✅ 完成 (' + (Date.now() - fileStart) + 'ms) 大小=' + Math.round(resultBlob.size / 1024) + 'KB', 'ok')
 
     } catch (e) {
       log('  ❌ 失败: ' + e.message, 'err')
@@ -757,7 +836,7 @@ async function startBatchProcess() {
 
     // 短暂让出主线程，允许GC回收内存
     if (idx < state.files.length - 1) {
-      await new Promise(function(r) { setTimeout(r, 50) })
+      await new Promise(function(r) { setTimeout(r, 80) })
     }
 
     done++
@@ -791,18 +870,13 @@ async function downloadAll() {
     var zip = new JSZip()
     var folder = zip.folder('watermarked')
 
-    state.processed.forEach(function(dataUrl, key) {
-      if (!dataUrl || dataUrl === 'data:,' || dataUrl.length < 100) {
+    state.processed.forEach(function(obj, key) {
+      if (!obj || !obj.blob || obj.blob.size === 0) {
         log('[下载] 跳过无效数据: ' + key, 'warn')
         return
       }
       var fileName = key.replace(/_\d+$/, '.jpg')
-      var bytes = ExifUtils.dataUrlToUint8Array(dataUrl)
-      if (bytes.length === 0) {
-        log('[下载] 跳过0字节文件: ' + fileName, 'warn')
-        return
-      }
-      folder.file(fileName, bytes, { binary: true })
+      folder.file(fileName, obj.blob, { binary: true })
     })
 
     log('[下载] 开始打包 ' + state.processed.size + ' 张照片...', 'ok')
@@ -835,6 +909,12 @@ function clearAll() {
   if (state.files.length > 0 && !confirm('确定清空所有照片？')) return
 
   log('[清空] 清除 ' + state.files.length + ' 张照片及所有缓存', 'ok')
+
+  // 释放所有 Blob URL
+  state.processed.forEach(function(obj) {
+    if (obj && obj.blobUrl) URL.revokeObjectURL(obj.blobUrl)
+  })
+
   state.files = []
   state.exifData.clear()
   state.processed.clear()
@@ -867,18 +947,10 @@ async function saveToAlbum() {
     // 优先使用 Web Share API（iOS Safari 原生分享表单，可保存到相册）
     if (navigator.share && navigator.canShare) {
       var files = []
-      var idx = 0
-      state.processed.forEach(function(dataUrl, key) {
-        var byteString = atob(dataUrl.split(',')[1])
-        var mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0]
-        var ab = new ArrayBuffer(byteString.length)
-        var ia = new Uint8Array(ab)
-        for (var i = 0; i < byteString.length; i++) {
-          ia[i] = byteString.charCodeAt(i)
-        }
+      state.processed.forEach(function(obj, key) {
+        if (!obj || !obj.blob) return
         var fileName = key.replace(/_\d+$/, '.jpg')
-        files.push(new File([ab], fileName, { type: 'image/jpeg' }))
-        idx++
+        files.push(new File([obj.blob], fileName, { type: 'image/jpeg' }))
       })
 
       var shareData = { files: files }
@@ -895,13 +967,14 @@ async function saveToAlbum() {
     // 降级方案：逐张下载（间隔500ms防止浏览器拦截）
     log('[相册] 浏览器不支持直接保存到相册，将逐张下载', 'warn')
     var entries = []
-    state.processed.forEach(function(dataUrl, key) {
-      entries.push({ dataUrl: dataUrl, fileName: key.replace(/_\d+$/, '.jpg') })
+    state.processed.forEach(function(obj, key) {
+      if (!obj || !obj.blobUrl) return
+      entries.push({ blobUrl: obj.blobUrl, fileName: key.replace(/_\d+$/, '.jpg') })
     })
     for (var i = 0; i < entries.length; i++) {
       var entry = entries[i]
       var a = document.createElement('a')
-      a.href = entry.dataUrl
+      a.href = entry.blobUrl
       a.download = entry.fileName
       document.body.appendChild(a)
       a.click()

@@ -10,7 +10,7 @@ const Watermark = (() => {
   /**
    * 给图片添加水印
    */
-  function addWatermark(input, config) {
+  async function addWatermark(input, config) {
     const canvas = document.getElementById('watermarkCanvas')
     const ctx = canvas.getContext('2d')
 
@@ -127,25 +127,37 @@ const Watermark = (() => {
       ctx.restore()
     }
 
-    // 10. 安全导出
+    // 10. 安全导出 — 使用 toBlob() 替代 toDataURL()
+    // toBlob() 生成的 Blob 由浏览器管理，可交换到磁盘，不占用 JS 堆内存
+    // toDataURL() 生成的 base64 字符串存在 JS 堆中，12MP 照片约占 8-15MB，批量处理时容易 OOM
     try {
-      var result = canvas.toDataURL('image/jpeg', 1.0)
-      // 校验导出结果：toDataURL 在内存不足时会静默返回 "data:," 而不报错
-      if (!result || result === 'data:,' || result.length < 100) {
-        console.warn('Canvas.toDataURL 返回空数据，尝试降级导出')
-        return fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily)
+      var blob = await canvasToBlob(canvas, 'image/jpeg', 1.0)
+      if (!blob || blob.size < 100) {
+        console.warn('Canvas.toBlob 返回空数据，尝试降级导出')
+        return await fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily)
       }
-      return result
+      return blob
     } catch (e) {
-      console.warn('Canvas.toDataURL 失败：', e.message)
-      return fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily)
+      console.warn('Canvas.toBlob 失败：', e.message)
+      return await fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily)
     }
+  }
+
+  /**
+   * canvas → Blob（Promise 包装 toBlob）
+   */
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise(function(resolve) {
+      canvas.toBlob(function(blob) {
+        resolve(blob)
+      }, type, quality)
+    })
   }
 
   /**
    * 降级方案：不含地图
    */
-  function fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily) {
+  async function fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily) {
     // 创建全新的canvas，避免iOS Safari上已污染canvas无法重置的问题
     const oldCanvas = document.getElementById('watermarkCanvas')
     const canvas = document.createElement('canvas')
@@ -187,12 +199,12 @@ const Watermark = (() => {
     drawLabelValueColumn(ctx, items.slice(perCol), padding + colWidth + colGap, colStartY, colWidth, labelFontSize, valueFontSize, itemHeight, fontFamily)
 
     try {
-      var result = canvas.toDataURL('image/jpeg', 1.0)
-      if (!result || result === 'data:,' || result.length < 100) {
+      var blob = await canvasToBlob(canvas, 'image/jpeg', 1.0)
+      if (!blob || blob.size < 100) {
         console.error('降级导出也返回空数据')
         return null
       }
-      return result
+      return blob
     } catch (e2) {
       console.error('降级导出也失败：', e2.message)
       return null
