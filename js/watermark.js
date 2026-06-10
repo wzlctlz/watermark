@@ -15,8 +15,12 @@ const Watermark = (() => {
     const ctx = canvas.getContext('2d')
 
     // 支持 Image / ImageBitmap / Canvas 输入
-    const imgW = input.naturalWidth || input.width
-    const imgH = input.naturalHeight || input.height
+    const imgW = input.naturalWidth || input.width || 0
+    const imgH = input.naturalHeight || input.height || 0
+    if (!imgW || !imgH) {
+      console.error('[addWatermark] 无法获取图片尺寸')
+      return null
+    }
     const barH = 800
 
     canvas.width = imgW
@@ -125,9 +129,15 @@ const Watermark = (() => {
 
     // 10. 安全导出
     try {
-      return canvas.toDataURL('image/jpeg', 1.0)
+      var result = canvas.toDataURL('image/jpeg', 1.0)
+      // 校验导出结果：toDataURL 在内存不足时会静默返回 "data:," 而不报错
+      if (!result || result === 'data:,' || result.length < 100) {
+        console.warn('Canvas.toDataURL 返回空数据，尝试降级导出')
+        return fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily)
+      }
+      return result
     } catch (e) {
-      console.warn('Canvas.toDataURL \u5931\u8D25\uFF1A', e.message)
+      console.warn('Canvas.toDataURL 失败：', e.message)
       return fallbackWithoutMap(input, config, barH, imgW, imgH, padding, fontFamily)
     }
   }
@@ -177,9 +187,14 @@ const Watermark = (() => {
     drawLabelValueColumn(ctx, items.slice(perCol), padding + colWidth + colGap, colStartY, colWidth, labelFontSize, valueFontSize, itemHeight, fontFamily)
 
     try {
-      return canvas.toDataURL('image/jpeg', 1.0)
+      var result = canvas.toDataURL('image/jpeg', 1.0)
+      if (!result || result === 'data:,' || result.length < 100) {
+        console.error('降级导出也返回空数据')
+        return null
+      }
+      return result
     } catch (e2) {
-      console.error('\u964D\u7EA7\u5BFC\u51FA\u4E5F\u5931\u8D25\uFF1A', e2.message)
+      console.error('降级导出也失败：', e2.message)
       return null
     }
   }

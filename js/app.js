@@ -23,8 +23,6 @@ const state = {
   // 照片选择模式
   selectMode: false,
   selectedIdx: -1,
-  // 连拍模式
-  burstMode: false,
 }
 
 // ===== 初始化 =====
@@ -32,17 +30,6 @@ document.addEventListener('DOMContentLoaded', function() {
   setupDragDrop()
   setupFileInputs()
   loadSavedConfig()
-
-  // 连拍模式复选框
-  var burstCheckbox = document.getElementById('burstMode')
-  var burstLabel = document.getElementById('burstLabel')
-  if (burstCheckbox && burstLabel) {
-    burstCheckbox.addEventListener('change', function() {
-      state.burstMode = this.checked
-      burstLabel.style.opacity = this.checked ? '1' : '0.5'
-      showToast(this.checked ? '连拍模式已开启，拍完一张会自动继续' : '连拍模式已关闭')
-    })
-  }
 })
 
 // ===== 拖拽支持 =====
@@ -119,30 +106,13 @@ function isImageFile(file) {
 
 // ===== 文件输入 =====
 function setupFileInputs() {
-  // 从相册多选照片
+  // 选择照片（手机上会弹出"拍照/相册"选项）
   var fileInput = document.getElementById('fileInput')
   if (fileInput) {
     fileInput.addEventListener('change', function(e) {
       var files = Array.from(e.target.files).filter(isImageFile)
       if (files.length > 0) addFiles(files)
       e.target.value = ''
-    })
-  }
-  // 调用系统原生相机拍照（单张，高质量，有EXIF）
-  var cameraInput = document.getElementById('cameraInput')
-  if (cameraInput) {
-    cameraInput.addEventListener('change', async function(e) {
-      var files = Array.from(e.target.files).filter(isImageFile)
-      if (files.length > 0) {
-        await addFiles(files)
-        e.target.value = ''  // 重置，使下次拍照能触发change
-        // 连拍模式：延迟重新触发相机
-        if (state.burstMode) {
-          setTimeout(function() { cameraInput.click() }, 600)
-        }
-      } else {
-        e.target.value = ''
-      }
     })
   }
 }
@@ -186,8 +156,40 @@ async function addFiles(newFiles) {
     }
   }
 
+  // 自动提取GPS坐标：若尚未有共享坐标，从第一张有GPS的照片中提取
+  if (!state.sharedWgsLng || !state.sharedWgsLat) {
+    for (var i = 0; i < unique.length; i++) {
+      var key = unique[i].name + '_' + unique[i].size
+      var exif = state.exifData.get(key)
+      if (exif && exif.gps && exif.gps.lat && exif.gps.lng) {
+        state.sharedWgsLng = exif.gps.lng
+        state.sharedWgsLat = exif.gps.lat
+        state.sharedAddress = null
+        log('[自动提取坐标] 从 ' + unique[i].name + ' 提取 WGS84(' + exif.gps.lat.toFixed(6) + ',' + exif.gps.lng.toFixed(6) + ')', 'ok')
+        // 同时逆地理编码
+        reverseGeocodeWgs84(exif.gps.lat, exif.gps.lng)
+        break
+      }
+    }
+  }
+
   updateUI()
   showToast('已添加 ' + unique.length + ' 张照片')
+}
+
+// ===== WGS84逆地理编码（先转GCJ02再请求高德）=====
+function reverseGeocodeWgs84(wgsLat, wgsLng) {
+  var gcj = CoordTransform.wgs84ToGcj02(wgsLng, wgsLat)
+  var amapKey = document.getElementById('amapKey').value.trim()
+  if (!amapKey) return
+  reverseGeocode(gcj.lng, gcj.lat, amapKey).then(function(addr) {
+    state.sharedAddress = addr
+    document.getElementById('address').value = addr || ''
+    log('[逆地理编码] ' + addr, 'ok')
+    updateUI()
+  }).catch(function(e) {
+    log('[逆地理编码] 失败: ' + e.message, 'warn')
+  })
 }
 
 // ===== 分辨率标识计算 =====
@@ -212,6 +214,34 @@ function getResBadge(exif) {
   }
   if (level >= 9) return { text: '1M', color: '#dc2626' }
   return labels[level] || { text: level + 'K', color: '#64748b' }
+}
+
+// ===== 大图缩放：超出安全尺寸时等比缩小 =====
+// 手机端 canvas 内存有限，超限照片在 addWatermark 前先缩小
+async function scaleImageIfNeeded(input) {
+  var MAX_DIM = 2048
+  var w = input.naturalWidth || input.width || 0
+  var h = input.naturalHeight || input.height || 0
+  if (!w || !h) return input
+  if (w <= MAX_DIM && h <= MAX_DIM) return input
+
+  var scale = MAX_DIM / Math.max(w, h)
+  var sW = Math.round(w * scale)
+  var sH = Math.round(h * scale)
+  log('  ├─ 图片超大(' + w + 'x' + h + ')，缩放至 ' + sW + 'x' + sH, 'warn')
+
+  var canvas = document.createElement('canvas')
+  canvas.width = sW
+  canvas.height = sH
+  var ctx = canvas.getContext('2d')
+  ctx.drawImage(input, 0, 0, sW, sH)
+
+  // 释放 ImageBitmap 内存
+  if (typeof input.close === 'function') {
+    input.close()
+  }
+
+  return canvas
 }
 
 // ===== 更新 UI =====
@@ -629,12 +659,17 @@ async function startBatchProcess() {
 
       // 加载图片
       var imgInput
+      var isBitmap = false
       try {
         var bitmap = await createImageBitmap(file)
         imgInput = bitmap
+        isBitmap = true
       } catch (e) {
         imgInput = await ExifUtils.fileToImage(file)
       }
+
+      // 大图缩放：手机端canvas内存有限，超限时缩到安全尺寸
+      imgInput = await scaleImageIfNeeded(imgInput)
 
       var exifResult = state.exifData.get(key)
       var orientation = exifResult && exifResult.orientation ? exifResult.orientation : 1
@@ -668,8 +703,19 @@ async function startBatchProcess() {
       }
 
       var watermarkedDataUrl = Watermark.addWatermark(imgInput, wmConfig)
+
+      // 释放 ImageBitmap 内存
+      if (isBitmap && imgInput && typeof imgInput.close === 'function') {
+        imgInput.close()
+      }
+
       if (!watermarkedDataUrl) {
         throw new Error('水印绘制失败')
+      }
+
+      // 校验 dataURL 有效性（防止 toDataURL 静默失败返回空数据）
+      if (watermarkedDataUrl.length < 100 || watermarkedDataUrl === 'data:,') {
+        throw new Error('canvas导出失败（可能内存不足），dataURL长度=' + watermarkedDataUrl.length)
       }
 
       // 注入EXIF
@@ -686,12 +732,32 @@ async function startBatchProcess() {
         finalDataUrl = ExifUtils.insertExif(watermarkedDataUrl, exifObj)
       }
 
+      // 校验最终 dataURL 有效性（防止 insertExif 损坏数据）
+      if (!finalDataUrl || finalDataUrl.length < 100 || finalDataUrl === 'data:,') {
+        log('  ⚠️ EXIF插入后数据异常，使用原始水印数据', 'warn')
+        finalDataUrl = watermarkedDataUrl
+      }
+
       state.processed.set(key, finalDataUrl)
-      log('  ✅ 完成 (' + (Date.now() - fileStart) + 'ms)', 'ok')
+      log('  ✅ 完成 (' + (Date.now() - fileStart) + 'ms) 大小=' + Math.round(finalDataUrl.length * 0.75 / 1024) + 'KB', 'ok')
 
     } catch (e) {
       log('  ❌ 失败: ' + e.message, 'err')
       console.error('[处理失败] ' + file.name, e)
+    }
+
+    // 释放 canvas 内存，防止批量处理时内存累积
+    var wmCanvas = document.getElementById('watermarkCanvas')
+    if (wmCanvas) {
+      var wmCtx = wmCanvas.getContext('2d')
+      wmCtx.clearRect(0, 0, wmCanvas.width, wmCanvas.height)
+      wmCanvas.width = 1
+      wmCanvas.height = 1
+    }
+
+    // 短暂让出主线程，允许GC回收内存
+    if (idx < state.files.length - 1) {
+      await new Promise(function(r) { setTimeout(r, 50) })
     }
 
     done++
@@ -726,8 +792,16 @@ async function downloadAll() {
     var folder = zip.folder('watermarked')
 
     state.processed.forEach(function(dataUrl, key) {
+      if (!dataUrl || dataUrl === 'data:,' || dataUrl.length < 100) {
+        log('[下载] 跳过无效数据: ' + key, 'warn')
+        return
+      }
       var fileName = key.replace(/_\d+$/, '.jpg')
       var bytes = ExifUtils.dataUrlToUint8Array(dataUrl)
+      if (bytes.length === 0) {
+        log('[下载] 跳过0字节文件: ' + fileName, 'warn')
+        return
+      }
       folder.file(fileName, bytes, { binary: true })
     })
 
@@ -818,21 +892,26 @@ async function saveToAlbum() {
       }
     }
 
-    // 降级方案：逐张下载
+    // 降级方案：逐张下载（间隔500ms防止浏览器拦截）
     log('[相册] 浏览器不支持直接保存到相册，将逐张下载', 'warn')
-    var count = 0
+    var entries = []
     state.processed.forEach(function(dataUrl, key) {
-      var fileName = key.replace(/_\d+$/, '.jpg')
+      entries.push({ dataUrl: dataUrl, fileName: key.replace(/_\d+$/, '.jpg') })
+    })
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i]
       var a = document.createElement('a')
-      a.href = dataUrl
-      a.download = fileName
+      a.href = entry.dataUrl
+      a.download = entry.fileName
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      count++
-    })
-    log('[相册] 已下载 ' + count + ' 张照片', 'ok')
-    showToast('已下载 ' + count + ' 张照片，请在相册中查看')
+      if (i < entries.length - 1) {
+        await new Promise(function(r) { setTimeout(r, 500) })
+      }
+    }
+    log('[相册] 已下载 ' + entries.length + ' 张照片', 'ok')
+    showToast('已下载 ' + entries.length + ' 张照片，请在下载目录查看')
   } catch (e) {
     if (e.name !== 'AbortError') {
       log('[相册] 保存失败: ' + e.message, 'err')
