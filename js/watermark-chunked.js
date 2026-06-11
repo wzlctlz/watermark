@@ -1,5 +1,6 @@
 /**
  * watermark-chunked.js - 分块水印（优先 Canvas toBlob）
+ * @version 2026-06-11-v2  (Canvas toBlob 优先，文件大小接近原图)
  *
  * 策略：
  *   1. 优先 Canvas + toBlob（浏览器原生编码，文件小、速度快）
