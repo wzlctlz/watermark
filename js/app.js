@@ -27,6 +27,8 @@ const state = {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
+  log('📌 水印相机 v2026-06-11-2232 (Canvas toBlob优先版)', 'ok')
+  console.log('[水印相机] 版本: v2026-06-11-2232')
   setupDragDrop()
   setupFileInputs()
   loadSavedConfig()
