@@ -659,6 +659,7 @@ async function startBatchProcess() {
   processBtn.disabled = true
 
   var config = getConfig()
+  validateBeforeProcess(config)   // 预检：地图/Key/坐标
   var total = state.files.length
   var done = 0
 
@@ -682,17 +683,6 @@ async function startBatchProcess() {
     var fileStart = Date.now()
     try {
       log('[' + (idx + 1) + '/' + total + '] ' + file.name + ' (' + Math.round(file.size / 1024) + 'KB)')
-
-      // 加载图片
-      var imgInput
-      var isBitmap = false
-      try {
-        var bitmap = await createImageBitmap(file)
-        imgInput = bitmap
-        isBitmap = true
-      } catch (e) {
-        imgInput = await ExifUtils.fileToImage(file)
-      }
 
       var exifResult = state.exifData.get(key)
       var orientation = exifResult && exifResult.orientation ? exifResult.orientation : 1
@@ -725,58 +715,84 @@ async function startBatchProcess() {
         orientation: orientation
       }
 
-      // ===== 原图优先，失败时渐进缩放重试 =====
-      // addWatermark 现在返回 Blob（toBlob），不再返回 base64 字符串
-      // 优势：Blob 由浏览器管理可交换磁盘，不占 JS 堆内存；base64 每张占 8-15MB
-      var watermarkedBlob = await Watermark.addWatermark(imgInput, wmConfig)
+      // ===== 分块方案优先（低内存），传统Canvas方案降级 =====
+      // 分块方案：只画800px信息栏Canvas + jpeg-js像素操作，无需整张图进Canvas
+      // 传统方案：整张图+信息栏进Canvas，大图容易超Canvas内存限制
 
-      // 释放第一次的 ImageBitmap
-      if (isBitmap && imgInput && typeof imgInput.close === 'function') {
-        imgInput.close()
-        imgInput = null
-      }
+      var watermarkedBlob = null
+      var usedChunked = false
 
-      // 检查是否失败（toBlob 内存不足时返回 null 或极小 Blob）
-      var failed = !watermarkedBlob || watermarkedBlob.size < 100
-
-      if (failed) {
-        // 渐进降级：先 4096，再 2048
-        var retryDims = [4096, 2048]
-        for (var ri = 0; ri < retryDims.length; ri++) {
-          log('  ⚠️ 原尺寸处理失败(内存不足)，尝试缩小至 ' + retryDims[ri] + 'px 重试...', 'warn')
-
-          // 重新加载图片
-          try {
-            var retryBitmap = await createImageBitmap(file)
-            imgInput = scaleInput(retryBitmap, retryDims[ri])
-          } catch (e3) {
-            imgInput = await ExifUtils.fileToImage(file)
-            imgInput = scaleInput(imgInput, retryDims[ri])
+      // 方案1: 分块方案（优先，低内存）
+      if (typeof WatermarkChunked !== 'undefined' && typeof jpeg !== 'undefined') {
+        try {
+          var arrayBuffer = await file.arrayBuffer()
+          watermarkedBlob = await WatermarkChunked.addWatermarkChunked(arrayBuffer, wmConfig)
+          arrayBuffer = null  // 释放原始字节
+          if (watermarkedBlob) {
+            usedChunked = true
+            log('  ├─ 分块方案成功（零画质损失）', 'ok')
           }
-
-          // 清理旧 canvas
-          var wmCanvas = document.getElementById('watermarkCanvas')
-          if (wmCanvas) { var wmCtx = wmCanvas.getContext('2d'); wmCtx.clearRect(0,0,wmCanvas.width,wmCanvas.height); wmCanvas.width=1; wmCanvas.height=1 }
-
-          // GC间隔
-          await new Promise(function(r) { setTimeout(r, 100) })
-
-          watermarkedBlob = await Watermark.addWatermark(imgInput, wmConfig)
-
-          // 释放重试用输入
-          if (imgInput && typeof imgInput.close === 'function') imgInput.close()
-          imgInput = null
-
-          if (watermarkedBlob && watermarkedBlob.size >= 100) {
-            log('  ✅ 缩放至 ' + retryDims[ri] + 'px 后成功（画质有损）', 'ok')
-            failed = false
-            break
-          }
+        } catch (chunkErr) {
+          log('  ⚠️ 分块方案失败: ' + chunkErr.message + '，尝试Canvas方案', 'warn')
+          watermarkedBlob = null
         }
       }
 
-      if (failed) {
-        throw new Error('原图及降级均处理失败（内存不足）')
+      // 方案2: 传统Canvas方案（降级）
+      if (!watermarkedBlob) {
+        var imgInput
+        var isBitmap = false
+        try {
+          var bitmap = await createImageBitmap(file)
+          imgInput = bitmap
+          isBitmap = true
+        } catch (e) {
+          imgInput = await ExifUtils.fileToImage(file)
+        }
+
+        watermarkedBlob = await Watermark.addWatermark(imgInput, wmConfig)
+
+        // 释放 ImageBitmap
+        if (isBitmap && imgInput && typeof imgInput.close === 'function') {
+          imgInput.close()
+          imgInput = null
+        }
+
+        // Canvas方案失败，尝试缩放重试
+        var failed = !watermarkedBlob || watermarkedBlob.size < 100
+        if (failed) {
+          var retryDims = [4096, 2048]
+          for (var ri = 0; ri < retryDims.length; ri++) {
+            log('  ⚠️ Canvas原尺寸失败，尝试缩小至 ' + retryDims[ri] + 'px...', 'warn')
+            try {
+              var retryBitmap = await createImageBitmap(file)
+              imgInput = scaleInput(retryBitmap, retryDims[ri])
+            } catch (e3) {
+              imgInput = await ExifUtils.fileToImage(file)
+              imgInput = scaleInput(imgInput, retryDims[ri])
+            }
+
+            var wmCanvas = document.getElementById('watermarkCanvas')
+            if (wmCanvas) { var wmCtx = wmCanvas.getContext('2d'); wmCtx.clearRect(0,0,wmCanvas.width,wmCanvas.height); wmCanvas.width=1; wmCanvas.height=1 }
+
+            await new Promise(function(r) { setTimeout(r, 100) })
+
+            watermarkedBlob = await Watermark.addWatermark(imgInput, wmConfig)
+
+            if (imgInput && typeof imgInput.close === 'function') imgInput.close()
+            imgInput = null
+
+            if (watermarkedBlob && watermarkedBlob.size >= 100) {
+              log('  ✅ 缩放至 ' + retryDims[ri] + 'px 后成功（画质有损）', 'ok')
+              failed = false
+              break
+            }
+          }
+        }
+
+        if (failed) {
+          throw new Error('分块方案和Canvas方案均失败（内存不足）')
+        }
       }
 
       // ===== EXIF 注入 =====
@@ -813,6 +829,11 @@ async function startBatchProcess() {
           resultBlob = dataUrlToBlob(finalDataUrl)
         }
         finalDataUrl = null  // 释放 dataURL 引用
+      }
+
+      // ===== 校验 resultBlob 有效性，防止存入 0KB 或 null =====
+      if (!validateBlob(resultBlob, '水印结果')) {
+        throw new Error('水印结果为无效Blob（大小=' + (resultBlob ? resultBlob.size : 'null') + 'B）')
       }
 
       var resultBlobUrl = URL.createObjectURL(resultBlob)
@@ -858,9 +879,48 @@ async function startBatchProcess() {
   showToast('处理完成！' + state.processed.size + ' 张照片已加水印')
 }
 
+// ===== 批量处理前预检 =====
+function validateBeforeProcess(config) {
+  var warnings = []
+
+  // 检查地图：若开启地图但地图未加载成功，警告但允许继续
+  if (config.showMap) {
+    if (!state.sharedMapImg) {
+      warnings.push('⚠️ 已开启地图，但地图图片未加载成功，水印将显示"地图不可用"占位符。')
+    }
+  }
+
+  // 检查高德Key：若需要逆地理编码但没有Key
+  if (config.showAddress && !config.amapKey) {
+    warnings.push('⚠️ 已开启地址显示，但未填写高德Key，地址将为空。')
+  }
+
+  // 检查坐标：统一模式但没有坐标
+  if (config.showCoords && !config.coordsText) {
+    warnings.push('⚠️ 已开启坐标显示，但未填写坐标，坐标将显示为空。')
+  }
+
+  if (warnings.length > 0) {
+    log('---')
+    warnings.forEach(function(w) { log(w, 'warn') })
+  }
+  return warnings
+}
+
 // ===== 生成压缩包 =====
 async function downloadAll() {
-  if (state.processed.size === 0) return
+  if (state.processed.size === 0) { showToast('请先添加照片并添加水印'); return }
+
+  // 先校验所有已处理照片的 Blob 有效性
+  var invalidKeys = []
+  state.processed.forEach(function(obj, key) {
+    if (!validateBlob(obj && obj.blob, '下载-' + key)) invalidKeys.push(key)
+  })
+  if (invalidKeys.length > 0) {
+    showToast('存在 ' + invalidKeys.length + ' 张无效照片，请重新添加水印')
+    log('[下载] 发现 ' + invalidKeys.length + ' 张无效照片，已阻止打包', 'err')
+    return
+  }
 
   var downloadBtn = document.getElementById('downloadBtn')
   downloadBtn.disabled = true
@@ -871,10 +931,7 @@ async function downloadAll() {
     var folder = zip.folder('watermarked')
 
     state.processed.forEach(function(obj, key) {
-      if (!obj || !obj.blob || obj.blob.size === 0) {
-        log('[下载] 跳过无效数据: ' + key, 'warn')
-        return
-      }
+      if (!validateBlob(obj && obj.blob, '下载-' + key)) return
       var fileName = key.replace(/_\d+$/, '.jpg')
       folder.file(fileName, obj.blob, { binary: true })
     })
@@ -944,6 +1001,19 @@ async function saveToAlbum() {
   albumBtn.textContent = '保存中...'
 
   try {
+    // 先校验所有 Blob 有效性
+    var invalidKeys = []
+    state.processed.forEach(function(obj, key) {
+      if (!validateBlob(obj && obj.blob, '相册-' + key)) invalidKeys.push(key)
+    })
+    if (invalidKeys.length > 0) {
+      showToast('存在 ' + invalidKeys.length + ' 张无效照片，请重新添加水印')
+      log('[相册] 发现 ' + invalidKeys.length + ' 张无效照片，已阻止保存', 'err')
+      albumBtn.disabled = false
+      albumBtn.textContent = '📲 保存到相册'
+      return
+    }
+
     // 优先使用 Web Share API（iOS Safari 原生分享表单，可保存到相册）
     if (navigator.share && navigator.canShare) {
       var files = []
@@ -1109,6 +1179,23 @@ function loadSavedConfig() {
     // coordsText 不恢复
     // dateText 不恢复
   } catch (e) {}
+}
+
+// ===== Blob 有效性校验 =====
+function validateBlob(blob, label) {
+  if (!blob || !(blob instanceof Blob)) {
+    log('  ❌ ' + (label || 'Blob') + ': 不是有效Blob', 'err')
+    return false
+  }
+  if (blob.size === 0) {
+    log('  ❌ ' + (label || 'Blob') + ': 大小为0', 'err')
+    return false
+  }
+  if (blob.size < 100) {
+    log('  ❌ ' + (label || 'Blob') + ': 大小异常(' + blob.size + 'B)', 'err')
+    return false
+  }
+  return true
 }
 
 // ===== 工具函数 =====
