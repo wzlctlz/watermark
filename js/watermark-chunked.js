@@ -501,31 +501,40 @@ const WatermarkChunked = (() => {
     var lineHeight = Math.round(VALUE_FS * 1.18)
     var itemGap = Math.round(VALUE_FS * 0.08)
 
-    // 右侧地图区域
+    // 左右圆角安全内缩：文字整体右移，避免进入圆角被裁切
+    var cornerInset = Math.round(imgW * 0.018)
+
+    // 右侧地图区域（先给初值，稍后按竖向高度微调）
     var mapMargin = Math.round(imgW * 0.012)
-    var mapSize = clampNum(Math.round(imgW * 0.075), 120, 820)
-    var mapAreaW = mapSize + mapMargin * 2
-    var textAreaW = imgW - mapAreaW - PAD * 2
+    var mapGap = Math.round(imgW * 0.006) + 8
+    var mapSize0 = clampNum(Math.round(imgW * 0.1), 160, 900)
+    var mapAreaW = mapSize0 + mapMargin * 2
 
     var mCanvas = document.createElement('canvas')
     var mctx = mCanvas.getContext('2d')
 
-    // 标签最大宽度 → 固定内容列起点（冒号对齐）
+    // 标签列宽：以 4 个汉字为准，少于 4 汉字的标签用空格补齐到该宽度（中文对齐）
+    mctx.font = 'bold ' + LABEL_FS + 'px ' + FONT_FAMILY
+    var cjkW = mctx.measureText('项').width
+    var labelColW = cjkW * 4
+
     var items = buildItems(config)
     var maxLabelW = 0
     items.forEach(function (it) {
-      mctx.font = 'bold ' + LABEL_FS + 'px ' + FONT_FAMILY
       maxLabelW = Math.max(maxLabelW, mctx.measureText(it.label).width)
     })
-    var gapToColon = Math.round(imgW * 0.006) + 20
-    var contentX = PAD + maxLabelW + gapToColon
-    var valueMaxW = textAreaW - (contentX - PAD)
+    // 列宽取「4字宽」与「最宽标签」的较大者，保证冒号不压住长标签
+    var colW = Math.max(labelColW, maxLabelW)
+
+    var textLeft = PAD + cornerInset
+    var gapToColon = Math.round(imgW * 0.006) + 16
+    var contentX = textLeft + colW + gapToColon
 
     mctx.font = VALUE_FS + 'px ' + FONT_FAMILY
     var itemsLayout = []
     var itemsTotal = 0
     items.forEach(function (it) {
-      var valLines = wrapText(mctx, it.value || '', valueMaxW)
+      var valLines = wrapText(mctx, it.value || '', (imgW - mapAreaW - PAD) - contentX)
       var n = valLines.length
       var h = n * lineHeight + (n > 0 ? itemGap : 0)
       itemsLayout.push({ label: it.label, valLines: valLines, h: h })
@@ -534,14 +543,26 @@ const WatermarkChunked = (() => {
 
     var titleBlockH = titleFS + Math.round(titleFS * 0.28) + Math.round(titleFS * 0.22)
     var top = PAD + titleBlockH
-    var minH = mapSize + mapMargin * 2
-    var height = Math.max(top + itemsTotal + PAD, minH + PAD * 2)
+
+    // 内容高度（不含地图）
+    var contentH = top + itemsTotal + PAD
+
+    // 地图尺寸：尽量填满竖向留白，但比内容高度稍小一点，不压住顶/底边框线
+    var mapSize = clampNum(
+      Math.round(Math.min(mapSize0, contentH - mapMargin * 2 - mapGap)),
+      160, 900
+    )
+    var minH = mapSize + mapMargin * 2 + mapGap
+    // 底部圆角留白
+    var height = Math.max(contentH, minH) + cornerInset
 
     return {
       titleFS: titleFS, LABEL_FS: LABEL_FS, VALUE_FS: VALUE_FS, PAD: PAD,
       lineHeight: lineHeight, itemGap: itemGap,
-      mapSize: mapSize, mapMargin: mapMargin, mapAreaW: mapAreaW,
-      contentX: contentX, valueMaxW: valueMaxW, maxLabelW: maxLabelW,
+      mapSize: mapSize, mapMargin: mapMargin, mapAreaW: mapAreaW, mapGap: mapGap,
+      cornerInset: cornerInset, textLeft: textLeft, contentX: contentX,
+      labelColW: labelColW, colW: colW, cjkW: cjkW,
+      valueMaxW: (imgW - mapAreaW - PAD) - contentX,
       itemsLayout: itemsLayout, titleBlockH: titleBlockH, top: top, height: height
     }
   }
@@ -567,32 +588,40 @@ const WatermarkChunked = (() => {
 
     var PAD = layout.PAD
     var titleFS = layout.titleFS
+    var textLeft = layout.textLeft
 
-    // 标题
+    // 标题（随圆角安全内缩右移）
     ctx.save()
     ctx.textBaseline = 'top'
     ctx.font = 'bold ' + titleFS + 'px ' + FONT_FAMILY
     ctx.fillStyle = '#0b3d91'
-    ctx.fillText('勘察记录', PAD, PAD)
+    ctx.fillText('勘察记录', textLeft, PAD)
     var titleW = ctx.measureText('勘察记录').width
     ctx.strokeStyle = '#1a73e8'
     ctx.lineWidth = Math.max(3, Math.round(imgW * 0.003))
     var dividerY = PAD + titleFS + Math.round(titleFS * 0.28)
     ctx.beginPath()
-    ctx.moveTo(PAD, dividerY)
-    ctx.lineTo(PAD + titleW, dividerY)
+    ctx.moveTo(textLeft, dividerY)
+    ctx.lineTo(textLeft + titleW, dividerY)
     ctx.stroke()
     ctx.restore()
 
-    // 信息条目（单栏，每行一条，冒号对齐，标签加粗）
+    // 信息条目（单栏，每行一条，冒号对齐，标签加粗，少于4汉字用全角空格补齐到4字宽）
     var cursorY = layout.top
     ctx.save()
     ctx.textBaseline = 'top'
+    var cjkW = layout.cjkW || ctx.measureText('项').width
     layout.itemsLayout.forEach(function (item) {
-      // 标签（加粗）
+      // 标签（加粗），不足 4 汉字宽度则补全角空格
       ctx.font = 'bold ' + layout.LABEL_FS + 'px ' + FONT_FAMILY
       ctx.fillStyle = '#1a1a1a'
-      ctx.fillText(item.label, PAD, cursorY)
+      var lbl = item.label
+      var lw = ctx.measureText(lbl).width
+      if (lw < layout.labelColW) {
+        var padN = Math.ceil((layout.labelColW - lw) / cjkW)
+        if (padN > 0) lbl = lbl + new Array(padN + 1).join('　')
+      }
+      ctx.fillText(lbl, textLeft, cursorY)
       // 内容（常规），首行以冒号开头，续行缩进到内容列
       ctx.font = layout.VALUE_FS + 'px ' + FONT_FAMILY
       ctx.fillStyle = '#000000'

@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v2026-08-17-grid'
+const APP_VERSION = 'v2026-08-17-bar'
 
 // ===== 全局状态 =====
 const state = {
@@ -34,7 +34,7 @@ const state = {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-  log('水印相机 ' + APP_VERSION + ' (网格加号/蓝紫进度条/玻璃拟态版)', 'ok')
+  log('水印相机 ' + APP_VERSION + ' (信息栏圆角避让/4字标签对齐/地图放大版)', 'ok')
   console.log('[水印相机] 版本: ' + APP_VERSION)
   captureEnvironment()
   initTheme()
