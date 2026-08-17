@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v2026-08-17-ui'
+const APP_VERSION = 'v2026-08-17-grid'
 
 // ===== 全局状态 =====
 const state = {
@@ -34,8 +34,8 @@ const state = {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-  log('📌 水印相机 v2026-08-17-ui (单行对齐水印/原生相机/渐变进度条版)', 'ok')
-  console.log('[水印相机] 版本: v2026-08-17-perf')
+  log('水印相机 ' + APP_VERSION + ' (网格加号/蓝紫进度条/玻璃拟态版)', 'ok')
+  console.log('[水印相机] 版本: ' + APP_VERSION)
   captureEnvironment()
   initTheme()
   setupDragDrop()
@@ -66,7 +66,7 @@ window.onWMPerfStage = function (key, name, ms, rec) {
     // 去掉前缀 [fs..] / [jpegjs] 仅用于展示清晰
     var label = name.replace(/^\[[^\]]*\]\s*/, '')
     var heap = (rec && rec.heapMB != null) ? ('  堆:' + rec.heapMB + 'MB') : ''
-    el.textContent = '⚙ ' + label + ' 完成 ' + ms + 'ms' + heap
+    el.textContent = label + ' 完成 ' + ms + 'ms' + heap
   } catch (e) {}
 }
 
@@ -176,20 +176,11 @@ function isImageFile(file) {
 }
 
 // ===== 文件输入 =====
+// 使用单个 input accept="image/*"：iOS/Android 会同时提供“拍照”与“相册”选项，并返回原图（含 GPS EXIF）
 function setupFileInputs() {
-  // 选择照片（相册 / 文件）
   var fileInput = document.getElementById('fileInput')
   if (fileInput) {
     fileInput.addEventListener('change', function(e) {
-      var files = Array.from(e.target.files).filter(isImageFile)
-      if (files.length > 0) addFiles(files)
-      e.target.value = ''
-    })
-  }
-  // 拍照：调用系统原生相机（capture=environment），返回原图 JPEG，自动保留 GPS EXIF 与原图画质
-  var cameraInput = document.getElementById('cameraInput')
-  if (cameraInput) {
-    cameraInput.addEventListener('change', function(e) {
       var files = Array.from(e.target.files).filter(isImageFile)
       if (files.length > 0) addFiles(files)
       e.target.value = ''
@@ -360,8 +351,13 @@ function updateUI() {
   document.getElementById('statNoGps').textContent = noGpsCount
   document.getElementById('statDone').textContent = doneCount
 
+  // 保留加号格引用，重建时始终把它放到最后
+  var addCell = document.getElementById('addCell')
+  if (addCell && addCell.parentNode) addCell.parentNode.removeChild(addCell)
+
   if (state.files.length === 0) {
     grid.innerHTML = ''
+    if (addCell) grid.appendChild(addCell)
     photoEmpty.style.display = ''
     document.getElementById('downloadBtn').disabled = true
     return
@@ -419,6 +415,7 @@ function updateUI() {
     }
     grid.appendChild(item)
   })
+  if (addCell) grid.appendChild(addCell)
 }
 
 // ===== 删除照片 =====
@@ -724,6 +721,7 @@ async function startBatchProcess() {
 
   var progressArea = document.getElementById('progressArea')
   var progressFill = document.getElementById('progressFill')
+  var progressPercent = document.getElementById('progressPercent')
   var progressText = document.getElementById('progressText')
   var processBtn = document.getElementById('processBtn')
   var logCard = document.getElementById('logCard')
@@ -965,17 +963,20 @@ async function startBatchProcess() {
     }
 
     done++
-    progressFill.style.width = (done / total * 100) + '%'
+    var pct = Math.round(done / total * 100)
+    progressFill.style.width = pct + '%'
+    if (progressPercent) progressPercent.textContent = pct + '%'
     progressText.textContent = done + ' / ' + total + ' 已处理'
   }
 
   var totalCost = Date.now() - state.startTime
   log('---')
-  log('🎉 全部完成！' + state.processed.size + '/' + total + ' 张成功，耗时 ' + (totalCost / 1000).toFixed(1) + 's', 'ok')
+  log('全部完成！' + state.processed.size + '/' + total + ' 张成功，耗时 ' + (totalCost / 1000).toFixed(1) + 's', 'ok')
   if (typeof WMEvent === 'function') WMEvent('process:end', { success: state.processed.size, total: total, totalCostMs: totalCost })
   progressText.textContent = '完成！' + state.processed.size + '/' + total + ' 张'
+  if (progressPercent) progressPercent.textContent = '100%'
   var pl = document.getElementById('perfLive')
-  if (pl) pl.textContent = '✅ 处理完成，共 ' + totalCost / 1000 + 's'
+  if (pl) pl.textContent = '处理完成，共 ' + totalCost / 1000 + 's'
 
   state.processing = false
   processBtn.disabled = false
@@ -1117,7 +1118,7 @@ async function saveToAlbum() {
       showToast('存在 ' + invalidKeys.length + ' 张无效照片，请重新添加水印')
       log('[相册] 发现 ' + invalidKeys.length + ' 张无效照片，已阻止保存', 'err')
       albumBtn.disabled = false
-      albumBtn.textContent = '📲 保存到相册'
+      albumBtn.textContent = '保存到相册'
       return
     }
 
@@ -1170,7 +1171,7 @@ async function saveToAlbum() {
   }
 
   albumBtn.disabled = false
-  albumBtn.textContent = '📲 保存到相册'
+  albumBtn.textContent = '保存到相册'
 }
 
 // ===== 导出调试信息（结构化全记录）=====

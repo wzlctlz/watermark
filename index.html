@@ -3,11 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/x-icon" href="favicon.ico?v=3">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=3">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=3">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=3">
-  <link rel="shortcut icon" href="favicon.ico?v=3">
   <title>水印相机</title>
 
   <!-- Tailwind CSS（主流开源UI框架，免构建） -->
@@ -79,31 +74,52 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* ===== 照片网格（动态组件，app.js 按类名操作） ===== */
-    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 12px; }
+    /* ===== 照片网格（群成员头像式） ===== */
+    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px; }
     .photo-item {
-      position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 4/3;
-      background: var(--input-bg); cursor: pointer; border: 2px solid transparent; transition: all .2s ease;
+      position: relative; border-radius: 16px; overflow: hidden; aspect-ratio: 1/1;
+      background: var(--input-bg); cursor: pointer; border: 1px solid var(--border);
+      box-shadow: 0 2px 6px rgba(0,0,0,.04);
+      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
     }
-    .photo-item:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.14); }
-    .photo-item.selected { border: 3px solid var(--danger); box-shadow: 0 0 0 3px rgba(239,68,68,.22); }
+    .photo-item:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.12); border-color: rgba(16,185,129,.4); }
+    .photo-item.selected { border: 2px solid var(--danger); box-shadow: 0 0 0 3px rgba(239,68,68,.18); }
     .photo-item.select-mode { cursor: crosshair; }
-    .photo-item.select-mode:hover { border-color: var(--danger); box-shadow: 0 6px 16px rgba(239,68,68,.18); }
+    .photo-item.select-mode:hover { border-color: var(--danger); box-shadow: 0 6px 16px rgba(239,68,68,.14); }
     .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .photo-item .btn-delete {
-      position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; border-radius: 50%;
-      background: rgba(239,68,68,.9); color: #fff; border: none; font-size: 15px; line-height: 22px;
+      position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(239,68,68,.92); color: #fff; border: none; font-size: 15px; line-height: 22px;
       text-align: center; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
-      padding: 0; opacity: 0; transition: opacity .2s;
+      padding: 0; opacity: 0; transition: opacity .2s, transform .15s;
     }
+    .photo-item .btn-delete:active { transform: scale(.9); }
     .photo-item:hover .btn-delete { opacity: 1; }
-    @media (hover: none) { .photo-item .btn-delete { opacity: .75; } }
-    .photo-item .badge { position: absolute; top: 28px; right: 5px; padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: 700; color: #fff; line-height: 1.2; }
+    @media (hover: none) { .photo-item .btn-delete { opacity: .85; } }
+    .photo-item .badge { position: absolute; top: 6px; right: 6px; padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: 700; color: #fff; line-height: 1.2; }
     .badge-gps { background: var(--success); }
     .badge-nogps { background: var(--warning); }
     .badge-done { background: var(--primary); }
-    .photo-item .badge-res { position: absolute; top: 5px; left: 5px; padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: 800; color: #fff; line-height: 1.2; width: auto; }
-    .photo-item .filename { position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 6px; background: rgba(0,0,0,.6); color: #fff; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .photo-item .badge-res { position: absolute; top: 6px; left: 6px; padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: 800; color: #fff; line-height: 1.2; width: auto; }
+    .photo-item .filename { position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 6px; background: rgba(0,0,0,.55); color: #fff; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ===== 添加照片格（末尾 + 号） ===== */
+    .add-cell {
+      aspect-ratio: 1/1; border-radius: 16px; border: 2px dashed var(--border);
+      background: rgba(16,185,129,.04); cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all .25s ease; min-height: 96px;
+    }
+    .add-cell:hover { border-color: var(--primary); background: rgba(16,185,129,.10); transform: translateY(-3px); box-shadow: 0 10px 24px rgba(16,185,129,.12); }
+    .add-cell:active { transform: scale(.96); }
+    .add-cell .plus {
+      width: 36px; height: 36px; position: relative; color: var(--text2); transition: color .2s;
+    }
+    .add-cell:hover .plus { color: var(--primary); }
+    .add-cell .plus::before, .add-cell .plus::after {
+      content: ''; position: absolute; background: currentColor; border-radius: 2px;
+    }
+    .add-cell .plus::before { width: 2px; height: 24px; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .add-cell .plus::after { width: 24px; height: 2px; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 
     /* ===== 预览弹窗 ===== */
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.82); z-index: 1000; align-items: center; justify-content: center; padding: 16px; backdrop-filter: blur(4px); }
@@ -119,40 +135,28 @@
     .log-warn { color: #fbbf24; }
     .log-err { color: #f87171; }
 
-    /* ===== 进度条（渐变色 + 动感流动点） ===== */
-    .progress-bar { height: 12px; background: var(--border); border-radius: 999px; overflow: hidden; position: relative; box-shadow: inset 0 1px 3px rgba(0,0,0,.12); }
+    /* ===== 进度条（截图风格：百分比在上，柔和蓝紫粉渐变） ===== */
+    .progress-wrap { text-align: center; }
+    .progress-percent {
+      font-size: 22px; font-weight: 700; letter-spacing: -0.02em;
+      background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      margin-bottom: 10px; line-height: 1;
+    }
+    .progress-bar {
+      height: 10px; border-radius: 999px; overflow: hidden; position: relative;
+      background: rgba(99,102,241,.10); box-shadow: inset 0 1px 2px rgba(0,0,0,.06);
+    }
     .progress-fill {
-      height: 100%; border-radius: 999px; position: relative; overflow: hidden;
-      background: linear-gradient(90deg, #10b981, #34d399, #22d3ee, #38bdf8, #10b981);
-      background-size: 300% 100%;
-      box-shadow: 0 0 14px rgba(16,185,129,.55);
-      animation: gradFlow 2.4s linear infinite;
+      height: 100%; border-radius: 999px; position: relative;
+      background: linear-gradient(90deg, #60a5fa, #818cf8, #c084fc, #f472b6);
+      box-shadow: 0 0 16px rgba(168,85,247,.35);
       transition: width .35s cubic-bezier(.4,0,.2,1);
     }
-    /* 流动的白点，营造“动感” */
-    .progress-fill::after {
-      content: ''; position: absolute; inset: 0;
-      background-image: radial-gradient(circle, rgba(255,255,255,.95) 1.6px, transparent 2.2px);
-      background-size: 26px 100%;
-      animation: dotFlow 1s linear infinite;
-      opacity: .9;
-    }
-    @keyframes gradFlow { 0% { background-position: 0% 0; } 100% { background-position: 300% 0; } }
-    @keyframes dotFlow { from { background-position: 0 0; } to { background-position: 26px 0; } }
     .progress-text { font-size: 12px; color: var(--text2); margin-top: 10px; text-align: center; letter-spacing: .02em; }
 
-    /* 实时性能指示：呼吸绿点 */
-    .perf-live { display: flex; align-items: center; gap: 7px; }
-    .perf-live::before {
-      content: ''; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-      background: #10b981; box-shadow: 0 0 0 0 rgba(16,185,129,.6);
-      animation: pulseDot 1.4s infinite;
-    }
-    @keyframes pulseDot {
-      0% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); }
-      70% { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
-      100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
-    }
+    /* 实时性能指示：简洁文字 */
+    .perf-live { margin-top: 10px; font-size: 12px; color: var(--text2); }
 
     /* ===== 开关 ===== */
     .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
@@ -170,6 +174,40 @@
     .zoom-value { font-size: 13px; font-weight: 700; color: var(--text); min-width: 22px; text-align: center; }
     .zoom-range { font-size: 11px; color: var(--text2); }
 
+    /* ===== 玻璃拟态卡片 ===== */
+    .glass-card {
+      position: relative; border-radius: 20px;
+      background: rgba(255,255,255,.72); backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,.5);
+      box-shadow: 0 8px 32px rgba(2,8,20,.08);
+      overflow: hidden; transition: background .3s, border-color .3s, box-shadow .3s;
+    }
+    html.dark .glass-card { background: rgba(21,32,58,.72); border-color: rgba(255,255,255,.08); box-shadow: 0 8px 32px rgba(0,0,0,.28); }
+    .glass-card::before {
+      content: ''; position: absolute; inset: 0; border-radius: 20px; padding: 1px;
+      background: linear-gradient(135deg, rgba(255,255,255,.55), rgba(255,255,255,0));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+    }
+    html.dark .glass-card::before { background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,0)); }
+
+    /* 渐变按钮 */
+    .btn-gradient {
+      background: linear-gradient(135deg, #10b981 0%, #14b8a6 50%, #06b6d4 100%);
+      background-size: 200% 200%;
+      color: #fff; border: none; transition: all .25s ease;
+      box-shadow: 0 4px 14px rgba(16,185,129,.35);
+    }
+    .btn-gradient:hover { background-position: 100% 0; box-shadow: 0 6px 20px rgba(16,185,129,.45); transform: translateY(-1px); }
+    .btn-gradient:active { transform: translateY(1px); }
+
+    /* 次要按钮 */
+    .btn-ghost {
+      background: rgba(148,163,184,.12); color: var(--text); border: 1px solid var(--border);
+      transition: all .2s ease;
+    }
+    .btn-ghost:hover { background: rgba(148,163,184,.20); border-color: var(--primary); }
+
     /* ===== 动画 / 滚动条 ===== */
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
     .photo-item { animation: fadeIn .25s ease; }
@@ -182,17 +220,9 @@
   <!-- ===== 顶部栏 ===== -->
   <header class="sticky top-0 z-50 backdrop-blur bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 transition-colors">
     <div class="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/30">
-          <svg viewBox="0 0 24 24" fill="none" class="w-5 h-5 text-white" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.2l1-1.6A1.5 1.5 0 0 1 9 3.6h6a1.5 1.5 0 0 1 1.3.8l1 1.6h1.2A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"/>
-            <circle cx="12" cy="13" r="3.2"/>
-          </svg>
-        </div>
-        <div class="leading-tight">
-          <h1 class="text-base font-bold text-slate-800 dark:text-white">水印相机</h1>
-          <p class="text-[11px] text-slate-400 dark:text-slate-500">勘察照片 · 一键批量水印</p>
-        </div>
+      <div class="leading-tight">
+        <h1 class="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-500 to-teal-400">水印相机</h1>
+        <p class="text-[11px] text-slate-400 dark:text-slate-500">勘察照片 · 一键批量水印</p>
       </div>
       <button onclick="cycleTheme()" title="切换主题（系统 / 日间 / 夜间）"
         class="group flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-sm">
@@ -205,57 +235,47 @@
   <main class="max-w-4xl mx-auto px-4 py-6 space-y-5">
 
     <!-- ===== 步骤 1：添加照片 ===== -->
-    <section class="bg-white dark:bg-slate-800/80 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 overflow-hidden transition-colors">
-      <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center gap-3">
-        <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-500 text-white text-sm font-bold">1</span>
-        <h2 class="text-[15px] font-semibold text-slate-800 dark:text-slate-100">添加照片</h2>
+    <section class="glass-card">
+      <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-500 text-white text-sm font-bold">1</span>
+          <h2 class="text-[15px] font-semibold text-slate-800 dark:text-slate-100">添加照片</h2>
+        </div>
+        <span class="text-xs text-slate-400 dark:text-slate-500">点击末尾加号添加，支持多选</span>
       </div>
       <div class="p-5">
-        <div id="dropZone"
-          class="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/40 px-6 py-7 text-center hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition">
-          <div class="text-4xl mb-2">📷</div>
-          <div class="text-sm font-medium text-slate-600 dark:text-slate-300">添加勘察照片</div>
-          <div class="flex gap-2.5 mt-3 justify-center flex-wrap">
-            <button type="button" onclick="document.getElementById('cameraInput').click()"
-              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm font-medium shadow-sm hover:shadow-md hover:shadow-emerald-500/30 transition active:scale-[.97]">
-              📸 拍照
-            </button>
-            <button type="button" onclick="document.getElementById('fileInput').click()"
-              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-[.97]">
-              🖼️ 选择照片
-            </button>
-          </div>
-          <div class="text-xs text-slate-400 dark:text-slate-500 mt-3">支持 JPG / PNG · 可多选 · 拍照调用系统相机，自动保留 GPS 与原图画质</div>
-        </div>
-
-        <div id="statsCard" class="flex flex-wrap gap-2.5 mt-4">
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
+        <div id="statsCard" class="flex flex-wrap gap-2.5 mb-4">
+          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
             <span class="w-2 h-2 rounded-full bg-emerald-500"></span>总计 <b id="statTotal" class="text-slate-800 dark:text-white ml-0.5">0</b>
           </div>
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
+          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
             <span class="w-2 h-2 rounded-full bg-emerald-500"></span>有GPS <b id="statGps" class="text-slate-800 dark:text-white ml-0.5">0</b>
           </div>
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
+          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
             <span class="w-2 h-2 rounded-full bg-amber-500"></span>无GPS <b id="statNoGps" class="text-slate-800 dark:text-white ml-0.5">0</b>
           </div>
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
+          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
             <span class="w-2 h-2 rounded-full bg-violet-500"></span>已处理 <b id="statDone" class="text-slate-800 dark:text-white ml-0.5">0</b>
           </div>
         </div>
 
-        <div class="photo-grid mt-4" id="photoGrid"></div>
+        <div class="photo-grid" id="photoGrid">
+          <div class="add-cell" id="addCell" onclick="document.getElementById('fileInput').click()" title="添加照片">
+            <div class="plus"></div>
+          </div>
+        </div>
         <div id="photoEmpty" style="display:none" class="text-center py-8 text-slate-400 dark:text-slate-500 text-sm">暂无照片，先添加几张吧</div>
       </div>
     </section>
 
     <!-- ===== 步骤 2：水印配置 ===== -->
-    <section class="bg-white dark:bg-slate-800/80 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 overflow-hidden transition-colors">
+    <section class="glass-card">
       <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700/50 flex items-center gap-3">
         <span class="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-500 text-white text-sm font-bold">2</span>
         <h2 class="text-[15px] font-semibold text-slate-800 dark:text-slate-100">水印配置</h2>
         <div class="ml-auto flex items-center gap-2">
           <button onclick="event.stopPropagation();loadPhotoInfo()" title="从列表中选择一张照片，加载其GPS信息"
-            class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium transition active:scale-95">加载照片信息</button>
+            class="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 text-xs font-medium transition active:scale-95">加载照片信息</button>
           <button id="configToggle" onclick="toggleConfig()"
             class="px-2 py-1.5 rounded-lg text-xs text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition">收起 ▲</button>
         </div>
@@ -321,9 +341,9 @@
 
         <div class="flex gap-3 mt-5">
           <button id="processBtn" onclick="startBatchProcess()"
-            class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-xl py-2.5 font-medium shadow-sm shadow-emerald-500/30 hover:shadow-md hover:shadow-emerald-500/40 transition active:scale-[.98]">批量加水印</button>
+            class="flex-1 btn-gradient rounded-xl py-2.5 font-medium active:scale-[.98]">批量加水印</button>
           <button onclick="clearAll()"
-            class="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl py-2.5 font-medium transition active:scale-[.98]">清空</button>
+            class="flex-1 btn-ghost rounded-xl py-2.5 font-medium active:scale-[.98]">清空</button>
         </div>
       </div>
     </section>
@@ -331,26 +351,28 @@
     <!-- ===== 步骤 3：处理与导出 ===== -->
     <section class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <button id="downloadBtn" onclick="downloadAll()" disabled
-        class="flex items-center justify-center gap-2 bg-slate-800 dark:bg-slate-700 text-white rounded-2xl py-3.5 font-medium shadow-sm hover:shadow-md transition active:scale-[.98] disabled:opacity-40 disabled:cursor-not-allowed">
-        📦 生成压缩包
+        class="flex items-center justify-center gap-2 btn-ghost rounded-2xl py-3.5 font-medium active:scale-[.98] disabled:opacity-40 disabled:cursor-not-allowed">
+        生成压缩包
       </button>
       <button id="albumBtn" onclick="saveToAlbum()" disabled
-        class="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-2xl py-3.5 font-medium shadow-sm hover:shadow-md transition active:scale-[.98] disabled:opacity-40 disabled:cursor-not-allowed">
-        📲 保存到相册
+        class="flex items-center justify-center gap-2 btn-gradient rounded-2xl py-3.5 font-medium active:scale-[.98] disabled:opacity-40 disabled:cursor-not-allowed">
+        保存到相册
       </button>
     </section>
 
     <!-- 进度 -->
-    <div id="progressArea" style="display:none" class="bg-white dark:bg-slate-800/80 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 p-4 transition-colors">
-      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-      <div class="progress-text" id="progressText">准备中...</div>
-      <div id="perfLive" class="perf-live mt-2 text-xs font-mono text-slate-500 dark:text-slate-400">⚙ 等待开始…</div>
+    <div id="progressArea" style="display:none" class="glass-card p-5">
+      <div class="progress-wrap">
+        <div class="progress-percent" id="progressPercent">0%</div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+        <div class="progress-text" id="progressText">准备中...</div>
+        <div id="perfLive" class="perf-live">等待开始…</div>
+      </div>
     </div>
 
     <!-- 日志 -->
-    <section id="logCard" class="bg-white dark:bg-slate-800/80 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 overflow-hidden transition-colors">
+    <section id="logCard" class="glass-card">
       <div class="px-5 py-3.5 border-b border-slate-100 dark:border-slate-700/50 flex items-center gap-3 cursor-pointer" onclick="toggleLog(this)">
-        <span class="text-base">📋</span>
         <h2 class="text-[15px] font-semibold text-slate-800 dark:text-slate-100">处理日志</h2>
         <div class="ml-auto flex items-center gap-2">
           <button onclick="event.stopPropagation();copyDebugInfo()" title="复制调试信息到剪贴板，方便直接粘贴反馈"
@@ -376,9 +398,7 @@
     </div>
   </div>
 
-  <!-- 隐藏的相机输入（调用系统原生相机，返回原图带 GPS EXIF） -->
-  <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
-  <!-- 隐藏的文件输入（相册 / 文件选择） -->
+  <!-- 隐藏的文件输入（相册 / 拍照 / 文件选择；iOS 会提供“拍照”选项，返回原图带 GPS） -->
   <input type="file" id="fileInput" multiple accept="image/*" style="display:none">
 
   <!-- 隐藏的画布 -->
