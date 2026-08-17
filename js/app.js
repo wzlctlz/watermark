@@ -4,6 +4,10 @@
  * 单列布局：照片列表(含选择按钮)→统计→配置→操作→日志
  */
 
+// ===== 高德 Web 服务 Key（硬编码，避免用户手动输入）=====
+// 用于逆地理编码（坐标→地址）和静态地图加载
+const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
+
 // ===== 全局状态 =====
 const state = {
   files: [],
@@ -27,7 +31,7 @@ const state = {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-  log('📌 水印相机 v2026-06-11-2232 (Canvas toBlob优先版)', 'ok')
+  log('📌 水印相机 v2026-08-17 (Key内置/高分辨率优化版)', 'ok')
   console.log('[水印相机] 版本: v2026-06-11-2232')
   setupDragDrop()
   setupFileInputs()
@@ -182,7 +186,7 @@ async function addFiles(newFiles) {
 // ===== WGS84逆地理编码（先转GCJ02再请求高德）=====
 function reverseGeocodeWgs84(wgsLat, wgsLng) {
   var gcj = CoordTransform.wgs84ToGcj02(wgsLng, wgsLat)
-  var amapKey = document.getElementById('amapKey').value.trim()
+  var amapKey = AMAP_WEB_KEY
   if (!amapKey) return
   reverseGeocode(gcj.lng, gcj.lat, amapKey).then(function(addr) {
     state.sharedAddress = addr
@@ -428,7 +432,7 @@ async function selectPhotoForInfo(idx) {
   var key = file.name + '_' + file.size
   var exifResult = state.exifData.get(key)
   var gps = exifResult && exifResult.gps ? exifResult.gps : null
-  var amapKey = document.getElementById('amapKey').value.trim()
+  var amapKey = AMAP_WEB_KEY
 
   // 标记选中
   state.selectedIdx = idx
@@ -580,7 +584,7 @@ async function getCurrentLocation() {
 
     info.innerHTML = '✅ GCJ02: ' + gcj.lng.toFixed(6) + ', ' + gcj.lat.toFixed(6) + '<br>WGS84: ' + wgsLng.toFixed(6) + ', ' + wgsLat.toFixed(6)
 
-    var amapKey = document.getElementById('amapKey').value.trim()
+    var amapKey = AMAP_WEB_KEY
     if (amapKey) {
       try {
         var addr = await reverseGeocode(gcj.lng, gcj.lat, amapKey)
@@ -803,6 +807,14 @@ async function startBatchProcess() {
       var exifObj = exifResult && exifResult.exifObj ? exifResult.exifObj : null
       var needExif = (useSharedGps || (exifObj && orientation !== 1))
 
+      // 大图保护：单张输出超过阈值时跳过 EXIF 重编码
+      // 避免 Blob→dataURL（base64）生成数十 MB 字符串导致卡顿/内存溢出
+      // 此时 GPS 坐标已显示在水印栏中，不影响查看
+      if (needExif && watermarkedBlob.size > 16 * 1024 * 1024) {
+        log('  ├─ 大图(>16MB)跳过EXIF重编码，避免卡顿/内存溢出（GPS已显示在水印栏）', 'warn')
+        needExif = false
+      }
+
       var resultBlob = watermarkedBlob
 
       if (needExif) {
@@ -839,7 +851,7 @@ async function startBatchProcess() {
       }
 
       var resultBlobUrl = URL.createObjectURL(resultBlob)
-      state.processed.set(key, { blob: resultBlob, blobUrl: resultBlobUrl })
+      state.processed.set(key, { blob: resultBlob, blobUrl: resultBlobUrl, name: file.name })
 
       log('  ✅ 完成 (' + (Date.now() - fileStart) + 'ms) 大小=' + Math.round(resultBlob.size / 1024) + 'KB', 'ok')
 
@@ -934,7 +946,7 @@ async function downloadAll() {
 
     state.processed.forEach(function(obj, key) {
       if (!validateBlob(obj && obj.blob, '下载-' + key)) return
-      var fileName = key.replace(/_\d+$/, '.jpg')
+      var fileName = outputFileName(obj.name)
       folder.file(fileName, obj.blob, { binary: true })
     })
 
@@ -1021,7 +1033,7 @@ async function saveToAlbum() {
       var files = []
       state.processed.forEach(function(obj, key) {
         if (!obj || !obj.blob) return
-        var fileName = key.replace(/_\d+$/, '.jpg')
+        var fileName = outputFileName(obj.name)
         files.push(new File([obj.blob], fileName, { type: 'image/jpeg' }))
       })
 
@@ -1041,7 +1053,7 @@ async function saveToAlbum() {
     var entries = []
     state.processed.forEach(function(obj, key) {
       if (!obj || !obj.blobUrl) return
-      entries.push({ blobUrl: obj.blobUrl, fileName: key.replace(/_\d+$/, '.jpg') })
+      entries.push({ blobUrl: obj.blobUrl, fileName: outputFileName(obj.name) })
     })
     for (var i = 0; i < entries.length; i++) {
       var entry = entries[i]
@@ -1141,7 +1153,7 @@ function getConfig() {
     projectName: document.getElementById('projectName').value.trim(),
     address: document.getElementById('addressText').value.trim(),
     remark: document.getElementById('remarkText').value.trim(),
-    amapKey: document.getElementById('amapKey').value.trim(),
+    amapKey: AMAP_WEB_KEY,
     showProject: document.getElementById('showProject').checked,
     showAddress: document.getElementById('showAddress').checked,
     showCoords: document.getElementById('showCoords').checked,
@@ -1166,7 +1178,6 @@ function loadSavedConfig() {
     if (saved.projectName) document.getElementById('projectName').value = saved.projectName
     // 地址和坐标不恢复，避免前一次数据污染本次
     if (saved.remark) document.getElementById('remarkText').value = saved.remark
-    if (saved.amapKey) document.getElementById('amapKey').value = saved.amapKey
     if (saved.showProject !== undefined) document.getElementById('showProject').checked = saved.showProject
     if (saved.showAddress !== undefined) document.getElementById('showAddress').checked = saved.showAddress
     if (saved.showCoords !== undefined) document.getElementById('showCoords').checked = saved.showCoords
@@ -1201,6 +1212,15 @@ function validateBlob(blob, label) {
 }
 
 // ===== 工具函数 =====
+
+// 输出文件名：剥离原始扩展名后统一加 .jpg（输出恒为 JPEG 重编码）
+// 例：photo.jpeg → photo.jpg，IMG_1234.jpg → IMG_1234.jpg
+function outputFileName(origName) {
+  var name = origName || 'photo'
+  var dot = name.lastIndexOf('.')
+  var base = (dot > 0 && dot > name.lastIndexOf('/') && dot > name.lastIndexOf('\\')) ? name.slice(0, dot) : name
+  return base + '.jpg'
+}
 
 function formatExifDate(exifDate) {
   if (!exifDate) return ''
@@ -1250,7 +1270,7 @@ function showToast(msg) {
 }
 
 // 自动保存配置
-document.querySelectorAll('#projectName,#addressText,#remarkText,#amapKey,#coordsText,#dateText').forEach(function(el) {
+document.querySelectorAll('#projectName,#addressText,#remarkText,#coordsText,#dateText').forEach(function(el) {
   el.addEventListener('input', saveConfig)
 })
 // zoom滑动条：拖动中只更新数值，松开后才重新加载地图
@@ -1263,7 +1283,7 @@ document.getElementById('mapZoom').addEventListener('change', function() {
 })
 
 async function reloadMapOnZoomChange() {
-  var amapKey = document.getElementById('amapKey').value.trim()
+  var amapKey = AMAP_WEB_KEY
   if (!document.getElementById('showMap').checked || !amapKey || !state.sharedGcjLng || !state.sharedGcjLat) return
 
   var zoom = parseInt(document.getElementById('mapZoom').value) || 15

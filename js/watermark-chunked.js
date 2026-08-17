@@ -1,15 +1,16 @@
 /**
  * watermark-chunked.js - 分块水印（优先 Canvas toBlob）
- * @version 2026-06-11-v2  (Canvas toBlob 优先，文件大小接近原图)
+ * @version 2026-08-17  (设备感知上限 + 超大图等比缩放，避免回退到极慢的 jpeg-js)
  *
  * 策略：
  *   1. 优先 Canvas + toBlob（浏览器原生编码，文件小、速度快）
- *   2. Canvas 装不下时降级到 jpeg-js 像素拼接
+ *   2. 超大图（超出安全上限）按安全上限等比缩放后，仍走原生 Canvas 合成
+ *   3. 仅在浏览器硬限制（尺寸/内存）彻底无法创建 Canvas 时，才降级到 jpeg-js
  *
  * 关于输出文件大小：
  *   toBlob() 不指定质量时，浏览器默认质量通常与原图编码质量接近
  *   输出比原图大 10-30% 是正常的（多了信息栏像素）
- *   不要用 jpeg-js 做主编码器——同质量参数下文件大 2-3 倍
+ *   不要用 jpeg-js 做主编码器——同质量参数下文件大 2-3 倍且极慢
  */
 
 const WatermarkChunked = (() => {
@@ -18,16 +19,21 @@ const WatermarkChunked = (() => {
   const PADDING = 48
   const FONT_FAMILY = '"YouYuan", "幼圆", "FangSong", "Microsoft YaHei", "PingFang SC", sans-serif'
 
-  // 内存安全上限：ImageBitmap + Canvas 总内存估算
-  // 手机浏览器 GPU 内存通常 67-256MB，保守限制
-  const MAX_CANVAS_PIXELS = 14 * 1024 * 1024  // 14MP
+  // 设备感知的 Canvas 像素安全上限（RGBA 4字节/像素）
+  // 依据 navigator.deviceMemory（GB）粗略估算可承受的画布像素数
+  var _devMem = (typeof navigator !== 'undefined' && navigator.deviceMemory) ? navigator.deviceMemory : 4
+  var MAX_CANVAS_PIXELS = _devMem >= 8 ? 130 * 1024 * 1024   // 桌面 8GB+：覆盖 1 亿像素(约117MP)照片
+    : _devMem >= 4 ? 70 * 1024 * 1024                        // 4-7GB
+    : 30 * 1024 * 1024                                       // 低端设备
+  // 浏览器对单边长的硬上限（多数引擎约 16384，保守取 16383）
+  var MAX_CANVAS_DIM = 16383
 
   // ============================================================
   // 主入口
   // ============================================================
 
   async function addWatermarkChunked(jpegArrayBuffer, config) {
-    // 路径一：Canvas + toBlob（浏览器原生编码器）
+    // 路径一：Canvas + toBlob（浏览器原生编码器，必要时等比缩放）
     try {
       var result = await encodeViaCanvas(jpegArrayBuffer, config)
       if (result) return result
@@ -35,7 +41,7 @@ const WatermarkChunked = (() => {
       console.warn('[分块水印] Canvas路径失败，降级到jpeg-js:', e.message)
     }
 
-    // 路径二：jpeg-js 像素拼接（超大图降级）
+    // 路径二：jpeg-js 像素拼接（仅浏览器硬限制无法创建 Canvas 时）
     return encodeViaJpegJs(jpegArrayBuffer, config)
   }
 
@@ -56,27 +62,43 @@ const WatermarkChunked = (() => {
 
     var imgW = imgBitmap.width
     var imgH = imgBitmap.height
-    var totalH = imgH + BAR_H
 
-    // 2. Canvas 尺寸安全检查
-    if (imgW * totalH > MAX_CANVAS_PIXELS) {
-      console.log('[分块水印-Canvas] Canvas尺寸超限 (' + imgW + 'x' + totalH + '=' + Math.round(imgW*totalH/1024/1024) + 'MP)，走降级路径')
-      imgBitmap.close()
-      return null
+    // 2. 计算安全缩放比例：保证「整图 + 信息栏」能放进安全 Canvas 上限
+    //    同时不超过浏览器单边长硬上限，避免创建 Canvas 失败
+    var scale = 1
+    var fullPx = imgW * (imgH + BAR_H)
+    if (fullPx > MAX_CANVAS_PIXELS) {
+      scale = Math.sqrt(MAX_CANVAS_PIXELS / fullPx)
+    }
+    var safeW = imgW * scale
+    var safeTotalH = (imgH + BAR_H) * scale
+    if (safeW > MAX_CANVAS_DIM || safeTotalH > MAX_CANVAS_DIM) {
+      var dimScale = Math.min(MAX_CANVAS_DIM / safeW, MAX_CANVAS_DIM / safeTotalH)
+      scale = Math.min(scale, dimScale)
+    }
+    scale = Math.min(1, Math.max(0.05, scale))
+
+    var outW = Math.max(1, Math.round(imgW * scale))
+    var outImgH = Math.max(1, Math.round(imgH * scale))
+    var outBarH = Math.max(1, Math.round(BAR_H * scale))
+    var totalH = outImgH + outBarH
+
+    if (scale < 1) {
+      console.log('[分块水印-Canvas] 原图 ' + imgW + 'x' + imgH + ' (' + Math.round(fullPx/1024/1024) + 'MP) 超出安全上限，等比缩放至 ' + outW + 'x' + outImgH + ' (scale=' + scale.toFixed(2) + ')')
+    } else {
+      console.log('[分块水印-Canvas] 原图 ' + imgW + 'x' + imgH + ' (' + Math.round(jpegArrayBuffer.byteLength / 1024) + 'KB)')
     }
 
-    console.log('[分块水印-Canvas] 原图 ' + imgW + 'x' + imgH + ' (' + Math.round(jpegArrayBuffer.byteLength / 1024) + 'KB)')
-
-    // 3. 画信息栏（小 Canvas，内存小）
+    // 3. 画信息栏（全分辨率小 Canvas，内存小；合成时再缩放到目标尺寸）
     var barCanvas = drawInfoBar(imgW, config)
 
-    // 4. 全尺寸 Canvas 合成
+    // 4. Canvas 合成（按需缩放，始终走原生编码）
     var canvas = document.createElement('canvas')
-    canvas.width = imgW
+    canvas.width = outW
     canvas.height = totalH
     var ctx = canvas.getContext('2d')
-    ctx.drawImage(imgBitmap, 0, 0)
-    ctx.drawImage(barCanvas, 0, imgH)
+    ctx.drawImage(imgBitmap, 0, 0, outW, outImgH)
+    ctx.drawImage(barCanvas, 0, 0, imgW, BAR_H, 0, outImgH, outW, outBarH)
 
     // 立即释放源，节省内存
     imgBitmap.close()
