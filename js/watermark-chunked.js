@@ -26,8 +26,8 @@
 (function () {
   if (window.WMDebug) return  // 避免热重载时重复初始化
   window.WMDebug = {
-    schemaVersion: 3,
-    appVersion: 'v2026-08-17',
+    schemaVersion: 4,
+    appVersion: 'v2026-08-17-perf',
     startedAt: Date.now(),
     entries: [],   // {t, level, source, msg}
     photos: {},    // key -> { key, fileName, steps:[...], ...摘要字段 }
@@ -82,6 +82,64 @@
       d.events.push({ t: Date.now(), name: name, data: data || null })
     } catch (e) {}
   }
+
+  // ============================================================
+  // 高精度性能计时器（按照片 key 记录各阶段耗时与数据量，用于分析卡顿/发热来源）
+  //   WMPerf.start(key)        开始一张照片的计时（app.js 在处理循环开头调用）
+  //   WMPerf.stage(key,name,d) 记录一个阶段结束，自动计算距上一阶段的毫秒差（performance.now 高精度）
+  //   WMPerf.end(key)          结束计时，返回 {totalMs, stages:[{name,ms,bytesIn,bytesOut,px,heapMB}], heapStartMB, heapPeakMB}
+  // 阶段名带 [fs0.6] 前缀表示 forceScale 降级重试；[jpegjs] 前缀表示走 jpeg-js 降级路径
+  // 每个阶段自动采样 JS 堆内存（仅 Chrome 支持 performance.memory），便于发现内存上涨导致的 GC 抖动(卡顿/发热)
+  // ============================================================
+  function _wmNow() {
+    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()
+  }
+  function _wmHeapMB() {
+    try {
+      if (typeof performance !== 'undefined' && performance.memory && performance.memory.usedJSHeapSize) {
+        return +(performance.memory.usedJSHeapSize / 1048576).toFixed(1)
+      }
+    } catch (e) {}
+    return null
+  }
+  window.WMPerf = {
+    _p: {},
+    start: function (key) {
+      try { if (!key) return; this._p[key] = { start: _wmNow(), last: _wmNow(), stages: [], heapStart: _wmHeapMB() } } catch (e) {}
+    },
+    stage: function (key, name, data) {
+      try {
+        if (!key) return 0
+        var p = this._p[key]
+        if (!p) { this.start(key); p = this._p[key] }
+        var t = _wmNow()
+        var dur = +(t - p.last).toFixed(1)
+        p.last = t
+        var rec = { name: name, ms: dur }
+        if (data) for (var k in data) if (data.hasOwnProperty(k)) rec[k] = data[k]
+        var h = _wmHeapMB(); if (h != null) rec.heapMB = h
+        p.stages.push(rec)
+        if (typeof window.onWMPerfStage === 'function') {
+          try { window.onWMPerfStage(key, name, dur, rec) } catch (e2) {}
+        }
+        return dur
+      } catch (e) { return 0 }
+    },
+    end: function (key) {
+      try {
+        var p = this._p[key]
+        if (!p) return null
+        var total = +(_wmNow() - p.start).toFixed(1)
+        delete this._p[key]
+        var peak = p.heapStart
+        for (var i = 0; i < p.stages.length; i++) {
+          var hv = p.stages[i].heapMB
+          if (hv != null && (peak == null || hv > peak)) peak = hv
+        }
+        return { totalMs: total, stages: p.stages, heapStartMB: p.heapStart, heapPeakMB: peak }
+      } catch (e) { return null }
+    }
+  }
 })()
 
 const WatermarkChunked = (() => {
@@ -132,6 +190,7 @@ const WatermarkChunked = (() => {
 
   async function encodeViaCanvas(jpegArrayBuffer, config, forceScale, key) {
     var encodeStart = Date.now()
+    var tag = forceScale ? '[fs' + forceScale + ']' : ''
     // 1. 轻量获取原图尺寸（不创建大 bitmap，避免超大图在 iOS 上直接解码失败/内存溢出）
     var imgBlob = new Blob([jpegArrayBuffer], { type: 'image/jpeg' })
     var dims = await getImageSize(imgBlob)
@@ -142,6 +201,9 @@ const WatermarkChunked = (() => {
     }
     var imgW = dims.w
     var imgH = dims.h
+    if (key) WMPerf.stage(key, tag + 'getSize', {
+      bytesIn: jpegArrayBuffer.byteLength, originalW: imgW, originalH: imgH
+    })
 
     // 2. 计算安全缩放比例（支持外部强制缩放 forceScale，用于降级重试）
     var scale = computeScale(imgW, imgH, forceScale)
@@ -191,6 +253,9 @@ const WatermarkChunked = (() => {
     var bmpW = imgBitmap.width
     var bmpH = imgBitmap.height
     var outBarH = Math.max(1, Math.round(BAR_H * (bmpW / imgW)))
+    if (key) WMPerf.stage(key, tag + 'decode', {
+      targetW: bmpW, targetH: bmpH, px: bmpW * bmpH, scale: +scale.toFixed(3)
+    })
 
     if (scale < 0.999) {
       WMLog('info', '[分块水印-Canvas] 原图 ' + imgW + 'x' + imgH + ' 等比缩放至 ' + bmpW + 'x' + bmpH + ' (scale=' + scale.toFixed(2) + ')', 'chunked')
@@ -200,6 +265,7 @@ const WatermarkChunked = (() => {
 
     // 4. 画信息栏（按原图宽度绘制，合成时缩放到最终宽度）
     var barCanvas = drawInfoBar(imgW, config)
+    if (key) WMPerf.stage(key, tag + 'drawBar', { barW: imgW, barH: BAR_H })
 
     // 5. Canvas 合成（始终走原生编码）
     var canvas = document.createElement('canvas')
@@ -208,6 +274,9 @@ const WatermarkChunked = (() => {
     var ctx = canvas.getContext('2d')
     ctx.drawImage(imgBitmap, 0, 0)
     ctx.drawImage(barCanvas, 0, 0, imgW, BAR_H, 0, bmpH, bmpW, outBarH)
+    if (key) WMPerf.stage(key, tag + 'composite', {
+      canvasW: bmpW, canvasH: bmpH + outBarH, px: bmpW * (bmpH + outBarH)
+    })
 
     // 立即释放源，节省内存
     if (imgBitmap.close) imgBitmap.close()
@@ -227,6 +296,10 @@ const WatermarkChunked = (() => {
       if (key) WMPhotoStep(key, 'canvas-toBlob-fail', {})
       return null
     }
+    if (key) WMPerf.stage(key, tag + 'toBlob', {
+      outBytes: blob.size, outPx: bmpW * (bmpH + outBarH),
+      ratio: +(blob.size / jpegArrayBuffer.byteLength * 100).toFixed(0)
+    })
 
     var ratio = (blob.size / jpegArrayBuffer.byteLength * 100).toFixed(0)
     WMLog('info', '[分块水印-Canvas] 完成，输出 ' + Math.round(blob.size / 1024) + 'KB (原图 ' + Math.round(jpegArrayBuffer.byteLength / 1024) + 'KB, ' + ratio + '%)', 'chunked')
@@ -310,12 +383,14 @@ const WatermarkChunked = (() => {
       if (key) WMPhotoStep(key, 'jpegjs-fail', { reason: 'no-dimensions' })
       return null
     }
+    if (key) WMPerf.stage(key, '[jpegjs]decode', { px: imgW * imgH, bytesIn: jpegArrayBuffer.byteLength })
 
     WMLog('info', '[分块水印-jpegJs] 原图 ' + imgW + 'x' + imgH + ', 像素 ' + Math.round(rawImage.data.length / 1024 / 1024) + 'MB', 'chunked')
     if (key) WMPhotoStep(key, 'jpegjs-decode-ok', { originalW: imgW, originalH: imgH, pixelsMB: +(rawImage.data.length / 1024 / 1024).toFixed(1) })
 
     // 画信息栏
     var barCanvas = drawInfoBar(imgW, config)
+    if (key) WMPerf.stage(key, '[jpegjs]drawBar', { barW: imgW, barH: BAR_H })
     var barCtx = barCanvas.getContext('2d')
     var barPixels = barCtx.getImageData(0, 0, imgW, BAR_H).data
 
@@ -339,12 +414,14 @@ const WatermarkChunked = (() => {
     rawImage = null
     mergedData.set(barPixels, imgW * imgH * 4)
     barPixels = null
+    if (key) WMPerf.stage(key, '[jpegjs]pixelMerge', { px: imgW * totalH })
 
     // jpeg-js 编码：用较低的固定质量（jpeg-js 高效低，q=60 已足够）
     // 不追求与原图大小完全一致，只保证不爆内存
     var encoded
     try {
       encoded = jpeg.encode({ data: mergedData, width: imgW, height: totalH }, 60)
+      if (key) WMPerf.stage(key, '[jpegjs]encode', { outBytes: encoded.data.length, outPx: imgW * totalH })
     } catch (e) {
       WMLog('err', '[分块水印-jpegJs] 编码失败: ' + e.message, 'chunked')
       mergedData = null

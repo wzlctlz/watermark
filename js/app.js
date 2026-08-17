@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v2026-08-17'
+const APP_VERSION = 'v2026-08-17-perf'
 
 // ===== 全局状态 =====
 const state = {
@@ -34,8 +34,8 @@ const state = {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-  log('📌 水印相机 v2026-08-17 (Key内置/高分辨率优化/明暗主题版)', 'ok')
-  console.log('[水印相机] 版本: v2026-08-17')
+  log('📌 水印相机 v2026-08-17-perf (Key内置/高分辨率优化/明暗主题/性能埋点版)', 'ok')
+  console.log('[水印相机] 版本: v2026-08-17-perf')
   captureEnvironment()
   initTheme()
   setupDragDrop()
@@ -56,6 +56,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   })
 })
+
+// ===== 实时性能阶段显示（WMPerf 每完成一个阶段回调）=====
+// 在进度区实时显示「当前刚完成的阶段 + 耗时」，方便现场观察哪一步在卡/发热
+window.onWMPerfStage = function (key, name, ms, rec) {
+  try {
+    var el = document.getElementById('perfLive')
+    if (!el) return
+    // 去掉前缀 [fs..] / [jpegjs] 仅用于展示清晰
+    var label = name.replace(/^\[[^\]]*\]\s*/, '')
+    var heap = (rec && rec.heapMB != null) ? ('  堆:' + rec.heapMB + 'MB') : ''
+    el.textContent = '⚙ ' + label + ' 完成 ' + ms + 'ms' + heap
+  } catch (e) {}
+}
 
 // ===== 主题：明暗 / 跟随系统 =====
 function getStoredTheme() {
@@ -741,6 +754,8 @@ async function startBatchProcess() {
     var file = state.files[idx]
     var key = file.name + '_' + file.size
     var fileStart = Date.now()
+    // 启动该照片的高精度性能计时（各阶段见 watermark-chunked.js / EXIF 注入）
+    if (typeof WMPerf !== 'undefined') WMPerf.start(key)
     try {
       log('[' + (idx + 1) + '/' + total + '] ' + file.name + ' (' + Math.round(file.size / 1024) + 'KB)')
 
@@ -798,6 +813,7 @@ async function startBatchProcess() {
       if (typeof WatermarkChunked !== 'undefined' && typeof jpeg !== 'undefined') {
         try {
           var arrayBuffer = await file.arrayBuffer()
+          if (typeof WMPerf !== 'undefined') WMPerf.stage(key, 'read-arrayBuffer', { bytes: arrayBuffer.byteLength })
           watermarkedBlob = await WatermarkChunked.addWatermarkChunked(arrayBuffer, wmConfig, null, key)
           arrayBuffer = null  // 释放原始字节
           if (watermarkedBlob) {
@@ -817,6 +833,7 @@ async function startBatchProcess() {
       if (!watermarkedBlob) {
         try {
           var fbBuf = await file.arrayBuffer()
+          if (typeof WMPerf !== 'undefined') WMPerf.stage(key, 'read-arrayBuffer-fb', { bytes: fbBuf.byteLength })
           var fallbackScales = [0.6, 0.4, 0.25, 0.12]
           var fbOk = false
           for (var fi = 0; fi < fallbackScales.length; fi++) {
@@ -865,8 +882,10 @@ async function startBatchProcess() {
 
       if (needExif) {
         // Blob → dataURL（临时，仅用于 piexif）
+        // ⚠️ 此步是 base64 编码超大 Blob，CPU 密集，是大图卡顿/发热主因之一
         var tempDataUrl = await blobToDataUrl(watermarkedBlob)
         watermarkedBlob = null  // 释放 Blob 引用
+        if (typeof WMPerf !== 'undefined') WMPerf.stage(key, 'exif-blobToDataUrl', { inBytes: tempDataUrl ? tempDataUrl.length : 0 })
 
         var finalDataUrl = tempDataUrl
 
@@ -880,13 +899,15 @@ async function startBatchProcess() {
           finalDataUrl = ExifUtils.insertExif(tempDataUrl, exifObj)
         }
         tempDataUrl = null  // 释放原始 dataURL
+        if (typeof WMPerf !== 'undefined') WMPerf.stage(key, 'exif-insert', { outBytes: finalDataUrl ? finalDataUrl.length : 0 })
 
         // 校验最终 dataURL 有效性（防止 insertExif 损坏数据）
         if (!finalDataUrl || finalDataUrl.length < 100 || finalDataUrl === 'data:,') {
           log('  ⚠️ EXIF插入后数据异常，使用原始水印数据', 'warn')
         } else {
-          // dataURL → Blob 存储
+          // dataURL → Blob 存储（base64 解码，同样 CPU 密集）
           resultBlob = dataUrlToBlob(finalDataUrl)
+          if (typeof WMPerf !== 'undefined') WMPerf.stage(key, 'exif-dataUrlToBlob', { inBytes: finalDataUrl.length })
         }
         finalDataUrl = null  // 释放 dataURL 引用
       }
@@ -909,6 +930,15 @@ async function startBatchProcess() {
       console.error('[处理失败] ' + file.name, e)
       if (typeof WMPhoto === 'function') WMPhoto(key, { error: e.message, durationMs: Date.now() - fileStart, processed: false })
       if (typeof WMEvent === 'function') WMEvent('photo:fail', { fileName: file.name, key: key, error: e.message })
+    }
+
+    // ===== 性能汇总：结束高精度计时，写入照片记录并实时打印各阶段耗时 =====
+    var perf = (typeof WMPerf !== 'undefined') ? WMPerf.end(key) : null
+    if (perf) {
+      if (typeof WMPhoto === 'function') WMPhoto(key, { perf: perf, perfTotalMs: perf.totalMs, heapPeakMB: perf.heapPeakMB })
+      // 实时打印：一眼看出是哪一段（解码/编码/EXIF base64）拖慢、发热
+      var stageStr = perf.stages.map(function (s) { return s.name + '=' + s.ms + 'ms' }).join('  ')
+      log('  ⏱ 总 ' + perf.totalMs + 'ms | ' + stageStr, 'info')
     }
 
     // 释放 canvas 内存，防止批量处理时内存累积
@@ -935,6 +965,8 @@ async function startBatchProcess() {
   log('🎉 全部完成！' + state.processed.size + '/' + total + ' 张成功，耗时 ' + (totalCost / 1000).toFixed(1) + 's', 'ok')
   if (typeof WMEvent === 'function') WMEvent('process:end', { success: state.processed.size, total: total, totalCostMs: totalCost })
   progressText.textContent = '完成！' + state.processed.size + '/' + total + ' 张'
+  var pl = document.getElementById('perfLive')
+  if (pl) pl.textContent = '✅ 处理完成，共 ' + totalCost / 1000 + 's'
 
   state.processing = false
   processBtn.disabled = false
@@ -1166,6 +1198,47 @@ function buildDebugInfo() {
     if (p.hasGps) gps++
   })
 
+  // 性能聚合：跨所有照片汇总各阶段耗时与数据量，定位卡顿/发热主因
+  var stageAgg = {}
+  var heapPeakAll = null
+  var perfPhotoCount = 0
+  photos.forEach(function (p) {
+    if (!p.perf || !p.perf.stages) return
+    perfPhotoCount++
+    if (p.perf.heapPeakMB != null) {
+      if (heapPeakAll == null || p.perf.heapPeakMB > heapPeakAll) heapPeakAll = p.perf.heapPeakMB
+    }
+    p.perf.stages.forEach(function (s) {
+      var a = stageAgg[s.name] || (stageAgg[s.name] = { name: s.name, totalMs: 0, count: 0, bytesIn: 0, bytesOut: 0 })
+      a.totalMs += s.ms
+      a.count += 1
+      if (s.bytesIn) a.bytesIn += s.bytesIn
+      if (s.bytes || s.outBytes) a.bytesOut += (s.bytes || s.outBytes)
+    })
+  })
+  var stageList = Object.keys(stageAgg).map(function (k) {
+    var a = stageAgg[k]
+    a.avgMs = +(a.totalMs / a.count).toFixed(1)
+    return a
+  }).sort(function (a, b) { return b.totalMs - a.totalMs })
+  var dominant = stageList.length ? stageList[0] : null
+  // 已知的高 CPU 发热/卡顿阶段（编码与 base64 转换）
+  var HOT = ['decode', 'composite', 'toBlob', 'exif-blobToDataUrl', 'exif-insert', 'exif-dataUrlToBlob', '[jpegjs]encode', '[jpegjs]pixelMerge']
+  var hotStages = HOT.filter(function (n) { return stageAgg[n] })
+  // 数据量换算（MB）
+  stageList.forEach(function (a) {
+    if (a.bytesIn) a.bytesInMB = +(a.bytesIn / 1048576).toFixed(1)
+    if (a.bytesOut) a.bytesOutMB = +(a.bytesOut / 1048576).toFixed(1)
+  })
+  var perfSummary = {
+    photosWithPerf: perfPhotoCount,
+    totalPhotos: photos.length,
+    dominantStage: dominant ? { name: dominant.name, totalMs: Math.round(dominant.totalMs), avgMs: dominant.avgMs, count: dominant.count } : null,
+    heapPeakMB: heapPeakAll,
+    hotStages: hotStages,
+    stages: stageList
+  }
+
   return {
     schemaVersion: d.schemaVersion || 3,
     appVersion: d.appVersion || APP_VERSION,
@@ -1184,6 +1257,7 @@ function buildDebugInfo() {
       totalOutputKB: totalOut,
       avgOutputRatioPct: totalOrig ? Math.round(totalOut / totalOrig * 100) : null
     },
+    perfSummary: perfSummary,
     location: {
       hasLocation: !!state.currentLocation,
       locationGcj02: state.currentLocation ? { lng: +state.currentLocation.lng.toFixed(6), lat: +state.currentLocation.lat.toFixed(6) } : null
