@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v2026-08-17-robust'
+const APP_VERSION = 'v2026-08-17-quality'
 
 // ===== 全局状态 =====
 const state = {
@@ -755,6 +755,7 @@ async function startBatchProcess() {
   validateBeforeProcess(config)   // 预检：地图/Key/坐标
   var total = state.files.length
   var done = 0
+  window.__warnedDownscale = false
 
   // 使用统一水印数据
   var useSharedGps = (state.sharedGcjLng != null && state.sharedGcjLat != null)
@@ -820,7 +821,8 @@ async function startBatchProcess() {
         showDate: config.showDate,
         showMap: config.showMap,
         mapImg: mapImg,
-        orientation: orientation
+        orientation: orientation,
+        outputQuality: config.outputQuality
       }
 
       // ===== 分块方案优先（低内存），传统Canvas方案降级 =====
@@ -839,8 +841,9 @@ async function startBatchProcess() {
           arrayBuffer = null  // 释放原始字节
           if (watermarkedBlob) {
             usedChunked = true
-            log('  ├─ 分块方案成功（零画质损失）', 'ok')
+            log('  ├─ 分块方案成功（分辨率保持原图，零降采样）', 'ok')
             if (typeof WMPhoto === 'function') WMPhoto(key, { usedChunked: true, fallback: false })
+            checkDownscaleWarn(key)
           }
         } catch (chunkErr) {
           log('  ⚠️ 分块方案失败: ' + chunkErr.message + '，尝试Canvas方案', 'warn')
@@ -866,6 +869,7 @@ async function startBatchProcess() {
                 watermarkedBlob = fbBlob
                 fbOk = true
                 log('  ✅ 缩放 ' + Math.round(fallbackScales[fi] * 100) + '% 成功，输出 ' + Math.round(fbBlob.size / 1024) + 'KB', 'ok')
+                checkDownscaleWarn(key)
                 break
               }
             } catch (fbErr) {
@@ -1148,8 +1152,8 @@ async function saveToAlbum() {
       var shareData = { files: files }
       if (navigator.canShare(shareData)) {
         await navigator.share(shareData)
-        log('[相册] 已通过分享保存', 'ok')
-        showToast('已保存到相册')
+        log('[相册] 已通过系统分享保存。注意：网页版无法自动建"水印相机"相册，请在手机照片App中手动新建并移入', 'ok')
+        showToast('已保存到照片')
         albumBtn.disabled = false
         albumBtn.textContent = '保存到相册'
         return
@@ -1175,8 +1179,8 @@ async function saveToAlbum() {
         await new Promise(function(r) { setTimeout(r, 500) })
       }
     }
-    log('[相册] 已下载 ' + entries.length + ' 张照片', 'ok')
-    showToast('已下载 ' + entries.length + ' 张照片，请在下载目录查看')
+    log('[相册] 已下载 ' + entries.length + ' 张到下载目录。注意：网页版无法自动建"水印相机"相册，请手动整理', 'ok')
+    showToast('已下载 ' + entries.length + ' 张到下载目录')
   } catch (e) {
     if (e.name !== 'AbortError') {
       log('[相册] 保存失败: ' + e.message, 'err')
@@ -1191,6 +1195,7 @@ async function saveToAlbum() {
 // ===== 导出调试信息（结构化全记录）=====
 // 生成 schemaVersion + environment + summary + photos(含步骤时间线) + events + logs(含t/level/source)
 function buildDebugInfo() {
+  if (window.WMDebug) window.WMDebug.appVersion = APP_VERSION
   var config = getConfig()
   var now = new Date()
   if (typeof captureEnvironment === 'function') captureEnvironment()  // 导出时刷新环境快照
@@ -1346,6 +1351,7 @@ function getConfig() {
     mapZoom: parseInt(document.getElementById('mapZoom').value) || 15,
     coordsText: document.getElementById('coordsText').value.trim(),
     dateText: document.getElementById('dateText').value.trim(),
+    outputQuality: OUTPUT_QUALITY,
   }
 }
 
@@ -1374,7 +1380,44 @@ function loadSavedConfig() {
     }
     // coordsText 不恢复
     // dateText 不恢复
+    if (saved.outputQuality) {
+      OUTPUT_QUALITY = saved.outputQuality
+      var seg = document.getElementById('qualitySeg')
+      if (seg) {
+        var opts = seg.querySelectorAll('.q-opt')
+        for (var i = 0; i < opts.length; i++) {
+          var qv = parseFloat(opts[i].getAttribute('data-q'))
+          if (qv === saved.outputQuality) opts[i].classList.add('active')
+          else opts[i].classList.remove('active')
+        }
+      }
+    }
   } catch (e) {}
+}
+
+// ===== 输出质量（JPEG 质量 0-1）：仅影响文件大小/色彩精度，不改变分辨率 =====
+var OUTPUT_QUALITY = 0.95
+function setQuality(btn) {
+  var q = parseFloat(btn.getAttribute('data-q'))
+  if (isNaN(q) || q <= 0 || q > 1) q = 0.95
+  OUTPUT_QUALITY = q
+  var seg = document.getElementById('qualitySeg')
+  if (seg) {
+    var opts = seg.querySelectorAll('.q-opt')
+    for (var i = 0; i < opts.length; i++) opts[i].classList.remove('active')
+    btn.classList.add('active')
+  }
+  saveConfig()
+}
+
+// 检测某张照片是否被设备编码限制强制降分辨率，仅首次提示一次
+function checkDownscaleWarn(key) {
+  if (typeof WMDebug === 'undefined' || !WMDebug.photos || !WMDebug.photos[key]) return
+  var ph = WMDebug.photos[key]
+  if (ph.scale && ph.scale < 0.999 && !window.__warnedDownscale) {
+    window.__warnedDownscale = true
+    showToast('⚠️ 原分辨率超出当前设备编码上限，已尽量保持最高可用分辨率（' + Math.round(ph.scale * 100) + '%）。文字清晰度可能略降，建议电脑端处理以保留原分辨率')
+  }
 }
 
 // ===== Blob 有效性校验 =====

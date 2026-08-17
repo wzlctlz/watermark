@@ -232,6 +232,20 @@
     }
     html.dark .glass-card::before { background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,0)); }
 
+    /* 输出质量分段选择 */
+    .quality-seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .quality-seg .q-opt {
+      padding: 9px 0; font-size: 13px; font-weight: 600; text-align: center;
+      border-radius: 10px; cursor: pointer; transition: all .2s ease;
+      border: 1px solid #cbd5e1; background: #f1f5f9; color: #475569;
+    }
+    .dark .quality-seg .q-opt { border-color: #475569; background: #1e293b; color: #cbd5e1; }
+    .quality-seg .q-opt:hover { border-color: #10b981; }
+    .quality-seg .q-opt.active {
+      background: linear-gradient(135deg, #10b981, #14b8a6); color: #fff; border-color: transparent;
+      box-shadow: 0 4px 12px rgba(16,185,129,.3);
+    }
+
     /* 渐变按钮 */
     .btn-gradient {
       background: linear-gradient(135deg, #10b981 0%, #14b8a6 50%, #06b6d4 100%);
@@ -381,6 +395,20 @@
             </div>
             <div id="mapPreview" style="display:none" class="mt-2">
               <img id="mapPreviewImg" src="" class="w-full max-w-[360px] rounded-xl border border-slate-200 dark:border-slate-700">
+            </div>
+          </div>
+
+          <!-- 输出质量：分辨率保持原图不变，仅调节 JPEG 压缩（色彩精度/文件大小） -->
+          <div class="sm:col-span-2 mt-1">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-medium text-slate-500 dark:text-slate-400">输出质量</span>
+              <span class="text-[11px] text-emerald-500 dark:text-emerald-400 font-medium">分辨率保持原图不变</span>
+            </div>
+            <div class="quality-seg" id="qualitySeg">
+              <button type="button" data-q="1" onclick="setQuality(this)" class="q-opt" title="JPEG 质量 100%（近似无损，文件最大）">无损</button>
+              <button type="button" data-q="0.95" onclick="setQuality(this)" class="q-opt active" title="JPEG 质量 95%（默认，细节最佳）">高保真</button>
+              <button type="button" data-q="0.85" onclick="setQuality(this)" class="q-opt" title="JPEG 质量 85%（文件适中）">标准</button>
+              <button type="button" data-q="0.7" onclick="setQuality(this)" class="q-opt" title="JPEG 质量 70%（最省空间）">省空间</button>
             </div>
           </div>
         </div>
