@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v2026-08-17-perf'
+const APP_VERSION = 'v2026-08-17-ui'
 
 // ===== 全局状态 =====
 const state = {
@@ -34,7 +34,7 @@ const state = {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-  log('📌 水印相机 v2026-08-17-perf (Key内置/高分辨率优化/明暗主题/性能埋点版)', 'ok')
+  log('📌 水印相机 v2026-08-17-ui (单行对齐水印/原生相机/渐变进度条版)', 'ok')
   console.log('[水印相机] 版本: v2026-08-17-perf')
   captureEnvironment()
   initTheme()
@@ -177,10 +177,19 @@ function isImageFile(file) {
 
 // ===== 文件输入 =====
 function setupFileInputs() {
-  // 选择照片（手机上会弹出"拍照/相册"选项）
+  // 选择照片（相册 / 文件）
   var fileInput = document.getElementById('fileInput')
   if (fileInput) {
     fileInput.addEventListener('change', function(e) {
+      var files = Array.from(e.target.files).filter(isImageFile)
+      if (files.length > 0) addFiles(files)
+      e.target.value = ''
+    })
+  }
+  // 拍照：调用系统原生相机（capture=environment），返回原图 JPEG，自动保留 GPS EXIF 与原图画质
+  var cameraInput = document.getElementById('cameraInput')
+  if (cameraInput) {
+    cameraInput.addEventListener('change', function(e) {
       var files = Array.from(e.target.files).filter(isImageFile)
       if (files.length > 0) addFiles(files)
       e.target.value = ''

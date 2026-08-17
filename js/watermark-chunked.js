@@ -144,7 +144,7 @@
 
 const WatermarkChunked = (() => {
 
-  const BAR_H = 800
+  const EST_BAR_H = 1000  // 信息栏高度估算（实际高度由 computeBarLayout 动态计算，这里仅用于像素安全上限估算，取偏大值更稳妥）
   const PADDING = 48
   const FONT_FAMILY = '"YouYuan", "幼圆", "FangSong", "Microsoft YaHei", "PingFang SC", sans-serif'
 
@@ -252,7 +252,10 @@ const WatermarkChunked = (() => {
 
     var bmpW = imgBitmap.width
     var bmpH = imgBitmap.height
-    var outBarH = Math.max(1, Math.round(BAR_H * (bmpW / imgW)))
+    // 信息栏高度自适应（按原图宽度计算布局，合成时等比缩放到最终宽度）
+    var barLayout = computeBarLayout(imgW, config)
+    var barH = barLayout.height
+    var outBarH = Math.max(1, Math.round(barH * (bmpW / imgW)))
     if (key) WMPerf.stage(key, tag + 'decode', {
       targetW: bmpW, targetH: bmpH, px: bmpW * bmpH, scale: +scale.toFixed(3)
     })
@@ -264,8 +267,8 @@ const WatermarkChunked = (() => {
     }
 
     // 4. 画信息栏（按原图宽度绘制，合成时缩放到最终宽度）
-    var barCanvas = drawInfoBar(imgW, config)
-    if (key) WMPerf.stage(key, tag + 'drawBar', { barW: imgW, barH: BAR_H })
+    var barCanvas = drawInfoBar(imgW, config, barLayout)
+    if (key) WMPerf.stage(key, tag + 'drawBar', { barW: imgW, barH: barH })
 
     // 5. Canvas 合成（始终走原生编码）
     var canvas = document.createElement('canvas')
@@ -273,7 +276,7 @@ const WatermarkChunked = (() => {
     canvas.height = bmpH + outBarH
     var ctx = canvas.getContext('2d')
     ctx.drawImage(imgBitmap, 0, 0)
-    ctx.drawImage(barCanvas, 0, 0, imgW, BAR_H, 0, bmpH, bmpW, outBarH)
+    ctx.drawImage(barCanvas, 0, 0, imgW, barH, 0, bmpH, bmpW, outBarH)
     if (key) WMPerf.stage(key, tag + 'composite', {
       canvasW: bmpW, canvasH: bmpH + outBarH, px: bmpW * (bmpH + outBarH)
     })
@@ -339,12 +342,12 @@ const WatermarkChunked = (() => {
     if (forceScale && forceScale > 0 && forceScale < 1) {
       return Math.min(1, forceScale)
     }
-    var fullPx = imgW * (imgH + BAR_H)
+    var fullPx = imgW * (imgH + EST_BAR_H)
     var scale = 1
     if (fullPx > MAX_CANVAS_PIXELS) {
       scale = Math.sqrt(MAX_CANVAS_PIXELS / fullPx)
     }
-    var safeTotalH = (imgH + BAR_H) * scale
+    var safeTotalH = (imgH + EST_BAR_H) * scale
     if (imgW * scale > MAX_CANVAS_DIM || safeTotalH > MAX_CANVAS_DIM) {
       var dimScale = Math.min(MAX_CANVAS_DIM / (imgW * scale), MAX_CANVAS_DIM / safeTotalH)
       scale = Math.min(scale, dimScale)
@@ -389,17 +392,18 @@ const WatermarkChunked = (() => {
     if (key) WMPhotoStep(key, 'jpegjs-decode-ok', { originalW: imgW, originalH: imgH, pixelsMB: +(rawImage.data.length / 1024 / 1024).toFixed(1) })
 
     // 画信息栏
-    var barCanvas = drawInfoBar(imgW, config)
-    if (key) WMPerf.stage(key, '[jpegjs]drawBar', { barW: imgW, barH: BAR_H })
+    var barLayoutJ = computeBarLayout(imgW, config)
+    var barCanvas = drawInfoBar(imgW, config, barLayoutJ)
+    if (key) WMPerf.stage(key, '[jpegjs]drawBar', { barW: imgW, barH: barLayoutJ.height })
     var barCtx = barCanvas.getContext('2d')
-    var barPixels = barCtx.getImageData(0, 0, imgW, BAR_H).data
+    var barPixels = barCtx.getImageData(0, 0, imgW, barLayoutJ.height).data
 
     barCanvas.width = 1
     barCanvas.height = 1
     barCanvas = null
 
     // 拼接像素
-    var totalH = imgH + BAR_H
+    var totalH = imgH + barLayoutJ.height
     var mergedData
     try {
       mergedData = new Uint8Array(imgW * totalH * 4)
@@ -446,63 +450,166 @@ const WatermarkChunked = (() => {
   // 共用：绘制信息栏（返回小 Canvas）
   // ============================================================
 
-  function drawInfoBar(imgW, config) {
+  function buildItems(config) {
+    var items = []
+    if (config.showProject && config.projectName) {
+      items.push({ label: '项目名称', value: config.projectName })
+    }
+    if (config.showAddress && config.address) {
+      items.push({ label: '地址', value: config.address })
+    }
+    if (config.showCoords && config.coordStr) {
+      items.push({ label: 'GCJ坐标', value: config.coordStr })
+    }
+    if (config.showDate && config.dateStr) {
+      items.push({ label: '日期', value: config.dateStr })
+    }
+    if (config.showRemark && config.remark) {
+      items.push({ label: '备注', value: config.remark })
+    }
+    return items
+  }
+
+  // 文本按宽度换行（中文按字符断行）
+  function wrapText(ctx, text, maxW) {
+    if (!text) return ['']
+    var lines = []
+    var cur = ''
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i]
+      var test = cur + ch
+      if (cur.length > 0 && ctx.measureText(test).width > maxW) {
+        lines.push(cur)
+        cur = ch
+      } else {
+        cur = test
+      }
+    }
+    if (cur.length > 0) lines.push(cur)
+    return lines
+  }
+
+  function clampNum(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
+
+  // 计算信息栏布局：高度自适应，单栏每行一条信息，冒号对齐，标签加粗
+  function computeBarLayout(imgW, config) {
+    var s = imgW / 1000
+    var titleFS = clampNum(Math.round(s * 8), 44, 110)
+    var LABEL_FS = clampNum(Math.round(s * 5.5), 32, 82)
+    var VALUE_FS = clampNum(Math.round(s * 7), 40, 96)
+    var PAD = clampNum(Math.round(s * 5), 28, 72)
+    var lineHeight = Math.round(VALUE_FS * 1.18)
+    var itemGap = Math.round(VALUE_FS * 0.08)
+
+    // 右侧地图区域
+    var mapMargin = Math.round(imgW * 0.012)
+    var mapSize = clampNum(Math.round(imgW * 0.075), 120, 820)
+    var mapAreaW = mapSize + mapMargin * 2
+    var textAreaW = imgW - mapAreaW - PAD * 2
+
+    var mCanvas = document.createElement('canvas')
+    var mctx = mCanvas.getContext('2d')
+
+    // 标签最大宽度 → 固定内容列起点（冒号对齐）
+    var items = buildItems(config)
+    var maxLabelW = 0
+    items.forEach(function (it) {
+      mctx.font = 'bold ' + LABEL_FS + 'px ' + FONT_FAMILY
+      maxLabelW = Math.max(maxLabelW, mctx.measureText(it.label).width)
+    })
+    var gapToColon = Math.round(imgW * 0.006) + 20
+    var contentX = PAD + maxLabelW + gapToColon
+    var valueMaxW = textAreaW - (contentX - PAD)
+
+    mctx.font = VALUE_FS + 'px ' + FONT_FAMILY
+    var itemsLayout = []
+    var itemsTotal = 0
+    items.forEach(function (it) {
+      var valLines = wrapText(mctx, it.value || '', valueMaxW)
+      var n = valLines.length
+      var h = n * lineHeight + (n > 0 ? itemGap : 0)
+      itemsLayout.push({ label: it.label, valLines: valLines, h: h })
+      itemsTotal += h
+    })
+
+    var titleBlockH = titleFS + Math.round(titleFS * 0.28) + Math.round(titleFS * 0.22)
+    var top = PAD + titleBlockH
+    var minH = mapSize + mapMargin * 2
+    var height = Math.max(top + itemsTotal + PAD, minH + PAD * 2)
+
+    return {
+      titleFS: titleFS, LABEL_FS: LABEL_FS, VALUE_FS: VALUE_FS, PAD: PAD,
+      lineHeight: lineHeight, itemGap: itemGap,
+      mapSize: mapSize, mapMargin: mapMargin, mapAreaW: mapAreaW,
+      contentX: contentX, valueMaxW: valueMaxW, maxLabelW: maxLabelW,
+      itemsLayout: itemsLayout, titleBlockH: titleBlockH, top: top, height: height
+    }
+  }
+
+  function drawInfoBar(imgW, config, layout) {
+    if (!layout) layout = computeBarLayout(imgW, config)
     var barCanvas = document.createElement('canvas')
     barCanvas.width = imgW
-    barCanvas.height = BAR_H
+    barCanvas.height = layout.height
     var ctx = barCanvas.getContext('2d')
 
     // 白底
     ctx.fillStyle = '#FFFFFF'
-    ctx.fillRect(0, 0, imgW, BAR_H)
+    ctx.fillRect(0, 0, imgW, layout.height)
 
-    // 顶部分割线
+    // 顶部蓝色装饰线
     ctx.strokeStyle = '#1a73e8'
-    ctx.lineWidth = 4
+    ctx.lineWidth = Math.max(4, Math.round(imgW * 0.004))
     ctx.beginPath()
     ctx.moveTo(0, 0)
     ctx.lineTo(imgW, 0)
     ctx.stroke()
 
-    // 地图区域尺寸
-    var hasMapImg = config.showMap && config.mapImg
-    var mapMargin = Math.round(imgW * 0.01)
-    var mapSize = 700
-    var mapAreaW = mapSize + mapMargin * 2
+    var PAD = layout.PAD
+    var titleFS = layout.titleFS
 
     // 标题
-    var titleFontSize = 100
     ctx.save()
-    ctx.font = 'bold ' + titleFontSize + 'px ' + FONT_FAMILY
-    ctx.fillStyle = '#000000'
     ctx.textBaseline = 'top'
-    ctx.fillText('勘察记录', PADDING, PADDING)
-
-    var titleBottom = PADDING + titleFontSize + 12
+    ctx.font = 'bold ' + titleFS + 'px ' + FONT_FAMILY
+    ctx.fillStyle = '#0b3d91'
+    ctx.fillText('勘察记录', PAD, PAD)
+    var titleW = ctx.measureText('勘察记录').width
     ctx.strokeStyle = '#1a73e8'
-    ctx.lineWidth = 3
+    ctx.lineWidth = Math.max(3, Math.round(imgW * 0.003))
+    var dividerY = PAD + titleFS + Math.round(titleFS * 0.28)
     ctx.beginPath()
-    ctx.moveTo(PADDING, titleBottom)
-    ctx.lineTo(PADDING + ctx.measureText('勘察记录').width, titleBottom)
+    ctx.moveTo(PAD, dividerY)
+    ctx.lineTo(PAD + titleW, dividerY)
     ctx.stroke()
     ctx.restore()
 
-    // 信息条目
-    var items = buildItems(config)
-    var textAreaWidth = imgW - mapAreaW - PADDING * 2
-    var colGap = 32
-    var colWidth = (textAreaWidth - colGap) / 2
-    var colStartY = titleBottom + 36
-    var labelFontSize = 36
-    var valueFontSize = 52
-    var itemHeight = 110
-    var perCol = Math.ceil(items.length / 2)
-    drawLabelValueColumn(ctx, items.slice(0, perCol), PADDING, colStartY, colWidth, labelFontSize, valueFontSize, itemHeight, FONT_FAMILY)
-    drawLabelValueColumn(ctx, items.slice(perCol), PADDING + colWidth + colGap, colStartY, colWidth, labelFontSize, valueFontSize, itemHeight, FONT_FAMILY)
+    // 信息条目（单栏，每行一条，冒号对齐，标签加粗）
+    var cursorY = layout.top
+    ctx.save()
+    ctx.textBaseline = 'top'
+    layout.itemsLayout.forEach(function (item) {
+      // 标签（加粗）
+      ctx.font = 'bold ' + layout.LABEL_FS + 'px ' + FONT_FAMILY
+      ctx.fillStyle = '#1a1a1a'
+      ctx.fillText(item.label, PAD, cursorY)
+      // 内容（常规），首行以冒号开头，续行缩进到内容列
+      ctx.font = layout.VALUE_FS + 'px ' + FONT_FAMILY
+      ctx.fillStyle = '#000000'
+      for (var i = 0; i < item.valLines.length; i++) {
+        var text = (i === 0 ? '：' : '') + item.valLines[i]
+        ctx.fillText(text, layout.contentX, cursorY + i * layout.lineHeight)
+      }
+      cursorY += item.h
+    })
+    ctx.restore()
 
     // 右侧地图
+    var hasMapImg = config.showMap && config.mapImg
+    var mapSize = layout.mapSize
+    var mapMargin = layout.mapMargin
     var mapX = imgW - mapSize - mapMargin
-    var mapY = (BAR_H - mapSize) / 2
+    var mapY = (layout.height - mapSize) / 2
 
     if (hasMapImg) {
       ctx.save()
@@ -528,7 +635,7 @@ const WatermarkChunked = (() => {
       ctx.lineWidth = 1
       drawRoundRect(ctx, mapX, mapY, mapSize, mapSize, 8)
       ctx.stroke()
-      ctx.font = '36px ' + FONT_FAMILY
+      ctx.font = Math.round(mapSize * 0.09) + 'px ' + FONT_FAMILY
       ctx.fillStyle = '#999999'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
@@ -537,53 +644,6 @@ const WatermarkChunked = (() => {
     }
 
     return barCanvas
-  }
-
-  // ============================================================
-  // 辅助函数
-  // ============================================================
-
-  function buildItems(config) {
-    var items = []
-    if (config.showProject && config.projectName) {
-      items.push({ label: '项目名称', value: config.projectName })
-    }
-    if (config.showAddress && config.address) {
-      items.push({ label: '地址', value: config.address })
-    }
-    if (config.showCoords && config.coordStr) {
-      items.push({ label: 'GCJ坐标', value: config.coordStr })
-    }
-    if (config.showDate && config.dateStr) {
-      items.push({ label: '日期', value: config.dateStr })
-    }
-    if (config.showRemark && config.remark) {
-      items.push({ label: '备注', value: config.remark })
-    }
-    return items
-  }
-
-  function drawLabelValueColumn(ctx, items, x, startY, maxWidth, labelFontSize, valueFontSize, itemHeight, fontFamily) {
-    ctx.save()
-    ctx.textBaseline = 'top'
-    items.forEach(function(item, i) {
-      var y = startY + i * itemHeight
-      ctx.font = labelFontSize + 'px ' + fontFamily
-      ctx.fillStyle = '#888888'
-      ctx.fillText(item.label, x, y)
-      ctx.font = valueFontSize + 'px ' + fontFamily
-      ctx.fillStyle = '#000000'
-      var valueText = item.value
-      var maxValWidth = maxWidth - 4
-      if (ctx.measureText(valueText).width > maxValWidth) {
-        while (valueText.length > 0 && ctx.measureText(valueText + '…').width > maxValWidth) {
-          valueText = valueText.slice(0, -1)
-        }
-        valueText += '…'
-      }
-      ctx.fillText(valueText, x, y + labelFontSize + 6)
-    })
-    ctx.restore()
   }
 
   function drawRoundRect(ctx, x, y, w, h, r) {

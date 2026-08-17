@@ -119,10 +119,40 @@
     .log-warn { color: #fbbf24; }
     .log-err { color: #f87171; }
 
-    /* ===== 进度条 ===== */
-    .progress-bar { height: 6px; background: var(--border); border-radius: 4px; overflow: hidden; }
-    .progress-fill { height: 100%; background: var(--primary); border-radius: 4px; transition: width .3s ease; }
-    .progress-text { font-size: 12px; color: var(--text2); margin-top: 8px; text-align: center; }
+    /* ===== 进度条（渐变色 + 动感流动点） ===== */
+    .progress-bar { height: 12px; background: var(--border); border-radius: 999px; overflow: hidden; position: relative; box-shadow: inset 0 1px 3px rgba(0,0,0,.12); }
+    .progress-fill {
+      height: 100%; border-radius: 999px; position: relative; overflow: hidden;
+      background: linear-gradient(90deg, #10b981, #34d399, #22d3ee, #38bdf8, #10b981);
+      background-size: 300% 100%;
+      box-shadow: 0 0 14px rgba(16,185,129,.55);
+      animation: gradFlow 2.4s linear infinite;
+      transition: width .35s cubic-bezier(.4,0,.2,1);
+    }
+    /* 流动的白点，营造“动感” */
+    .progress-fill::after {
+      content: ''; position: absolute; inset: 0;
+      background-image: radial-gradient(circle, rgba(255,255,255,.95) 1.6px, transparent 2.2px);
+      background-size: 26px 100%;
+      animation: dotFlow 1s linear infinite;
+      opacity: .9;
+    }
+    @keyframes gradFlow { 0% { background-position: 0% 0; } 100% { background-position: 300% 0; } }
+    @keyframes dotFlow { from { background-position: 0 0; } to { background-position: 26px 0; } }
+    .progress-text { font-size: 12px; color: var(--text2); margin-top: 10px; text-align: center; letter-spacing: .02em; }
+
+    /* 实时性能指示：呼吸绿点 */
+    .perf-live { display: flex; align-items: center; gap: 7px; }
+    .perf-live::before {
+      content: ''; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      background: #10b981; box-shadow: 0 0 0 0 rgba(16,185,129,.6);
+      animation: pulseDot 1.4s infinite;
+    }
+    @keyframes pulseDot {
+      0% { box-shadow: 0 0 0 0 rgba(16,185,129,.55); }
+      70% { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+      100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+    }
 
     /* ===== 开关 ===== */
     .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
@@ -181,11 +211,21 @@
         <h2 class="text-[15px] font-semibold text-slate-800 dark:text-slate-100">添加照片</h2>
       </div>
       <div class="p-5">
-        <div id="dropZone" onclick="document.getElementById('fileInput').click()"
-          class="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/40 px-6 py-8 text-center hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition cursor-pointer">
+        <div id="dropZone"
+          class="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/40 px-6 py-7 text-center hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition">
           <div class="text-4xl mb-2">📷</div>
-          <div class="text-sm font-medium text-slate-600 dark:text-slate-300">点击选择照片，或拖拽文件夹到本页</div>
-          <div class="text-xs text-slate-400 dark:text-slate-500 mt-1">支持 JPG / PNG · 可多选 · 手机端可选择拍照</div>
+          <div class="text-sm font-medium text-slate-600 dark:text-slate-300">添加勘察照片</div>
+          <div class="flex gap-2.5 mt-3 justify-center flex-wrap">
+            <button type="button" onclick="document.getElementById('cameraInput').click()"
+              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-sm font-medium shadow-sm hover:shadow-md hover:shadow-emerald-500/30 transition active:scale-[.97]">
+              📸 拍照
+            </button>
+            <button type="button" onclick="document.getElementById('fileInput').click()"
+              class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-700 transition active:scale-[.97]">
+              🖼️ 选择照片
+            </button>
+          </div>
+          <div class="text-xs text-slate-400 dark:text-slate-500 mt-3">支持 JPG / PNG · 可多选 · 拍照调用系统相机，自动保留 GPS 与原图画质</div>
         </div>
 
         <div id="statsCard" class="flex flex-wrap gap-2.5 mt-4">
@@ -281,7 +321,7 @@
 
         <div class="flex gap-3 mt-5">
           <button id="processBtn" onclick="startBatchProcess()"
-            class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl py-2.5 font-medium shadow-sm hover:shadow-md transition active:scale-[.98]">批量加水印</button>
+            class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-xl py-2.5 font-medium shadow-sm shadow-emerald-500/30 hover:shadow-md hover:shadow-emerald-500/40 transition active:scale-[.98]">批量加水印</button>
           <button onclick="clearAll()"
             class="flex-1 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl py-2.5 font-medium transition active:scale-[.98]">清空</button>
         </div>
@@ -304,7 +344,7 @@
     <div id="progressArea" style="display:none" class="bg-white dark:bg-slate-800/80 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700/60 p-4 transition-colors">
       <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
       <div class="progress-text" id="progressText">准备中...</div>
-      <div id="perfLive" class="mt-2 text-xs font-mono text-slate-500 dark:text-slate-400">⚙ 等待开始…</div>
+      <div id="perfLive" class="perf-live mt-2 text-xs font-mono text-slate-500 dark:text-slate-400">⚙ 等待开始…</div>
     </div>
 
     <!-- 日志 -->
@@ -336,7 +376,9 @@
     </div>
   </div>
 
-  <!-- 隐藏的文件输入 -->
+  <!-- 隐藏的相机输入（调用系统原生相机，返回原图带 GPS EXIF） -->
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+  <!-- 隐藏的文件输入（相册 / 文件选择） -->
   <input type="file" id="fileInput" multiple accept="image/*" style="display:none">
 
   <!-- 隐藏的画布 -->
