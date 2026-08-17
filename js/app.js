@@ -255,7 +255,8 @@ function reverseGeocodeWgs84(wgsLat, wgsLng) {
   if (!amapKey) return
   reverseGeocode(gcj.lng, gcj.lat, amapKey).then(function(addr) {
     state.sharedAddress = addr
-    document.getElementById('address').value = addr || ''
+    var addrInput = document.getElementById('addressText')
+    if (addrInput) addrInput.value = addr || ''
     log('[逆地理编码] ' + addr, 'ok')
     updateUI()
   }).catch(function(e) {
