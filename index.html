@@ -312,7 +312,9 @@
         <span class="text-base">📋</span>
         <h2 class="text-[15px] font-semibold text-slate-800 dark:text-slate-100">处理日志</h2>
         <div class="ml-auto flex items-center gap-2">
-          <button onclick="event.stopPropagation();exportDebugInfo()" title="导出配置+日志，方便反馈问题"
+          <button onclick="event.stopPropagation();copyDebugInfo()" title="复制调试信息到剪贴板，方便直接粘贴反馈"
+            class="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 transition">复制</button>
+          <button onclick="event.stopPropagation();exportDebugInfo()" title="导出配置+日志+每照片步骤时间线，方便反馈问题"
             class="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs hover:bg-slate-100 dark:hover:bg-slate-700 transition">导出</button>
           <span class="text-xs text-slate-400 dark:text-slate-500 log-toggle-text">展开 ▼</span>
         </div>

@@ -8,6 +8,9 @@
 // 用于逆地理编码（坐标→地址）和静态地图加载
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
+// 应用版本（与调试导出 schema 对应）
+const APP_VERSION = 'v2026-08-17'
+
 // ===== 全局状态 =====
 const state = {
   files: [],
@@ -33,10 +36,25 @@ const state = {
 document.addEventListener('DOMContentLoaded', function() {
   log('📌 水印相机 v2026-08-17 (Key内置/高分辨率优化/明暗主题版)', 'ok')
   console.log('[水印相机] 版本: v2026-08-17')
+  captureEnvironment()
   initTheme()
   setupDragDrop()
   setupFileInputs()
   loadSavedConfig()
+  // 全局错误捕获（任何未捕获异常都进入调试记录，便于事后定位）
+  window.addEventListener('error', function (ev) {
+    if (typeof WMLog === 'function') {
+      WMLog('err', '[全局异常] ' + (ev.message || 'unknown') + (ev.filename ? ' @ ' + ev.filename + ':' + ev.lineno : ''), 'global')
+      if (typeof WMEvent === 'function') WMEvent('uncaught-error', { message: ev.message, file: ev.filename, line: ev.lineno, col: ev.colno })
+    }
+  })
+  window.addEventListener('unhandledrejection', function (ev) {
+    if (typeof WMLog === 'function') {
+      var r = ev.reason
+      WMLog('err', '[未处理的Promise拒绝] ' + (r && r.message ? r.message : String(r)), 'global')
+      if (typeof WMEvent === 'function') WMEvent('unhandled-rejection', { message: r && r.message ? r.message : String(r) })
+    }
+  })
 })
 
 // ===== 主题：明暗 / 跟随系统 =====
@@ -543,13 +561,16 @@ async function selectPhotoForInfo(idx) {
       if (state.mapCache.has(cacheKey)) {
         state.sharedMapImg = state.mapCache.get(cacheKey)
         log('[加载照片信息] 地图: 使用缓存', 'ok')
+        if (typeof WMEvent === 'function') WMEvent('map:loaded', { fromCache: true, w: state.sharedMapImg.naturalWidth, h: state.sharedMapImg.naturalHeight })
       } else {
         state.sharedMapImg = await Watermark.loadMapImage(state.sharedGcjLng, state.sharedGcjLat, amapKey, 350, parseInt(document.getElementById('mapZoom').value) || 15)
         if (state.sharedMapImg) {
           state.mapCache.set(cacheKey, state.sharedMapImg)
           log('[加载照片信息] 地图: 加载成功 ' + state.sharedMapImg.naturalWidth + 'x' + state.sharedMapImg.naturalHeight, 'ok')
+          if (typeof WMEvent === 'function') WMEvent('map:loaded', { fromCache: false, w: state.sharedMapImg.naturalWidth, h: state.sharedMapImg.naturalHeight })
         } else {
           log('[加载照片信息] 地图: 加载失败', 'warn')
+          if (typeof WMEvent === 'function') WMEvent('map:failed', { fromCache: false })
         }
       }
     } catch (e) {
@@ -707,6 +728,7 @@ async function startBatchProcess() {
   var mapImg = state.sharedMapImg
 
   log('🚀 开始批量处理，共 ' + total + ' 张照片', 'ok')
+  if (typeof WMEvent === 'function') WMEvent('process:start', { total: total, useSharedGps: useSharedGps, hasMap: !!(config.showMap && mapImg) })
   log('  统一水印模式: ' + (useSharedGps ? 'GCJ02(' + state.sharedGcjLng.toFixed(6) + ',' + state.sharedGcjLat.toFixed(6) + ')' : '无GPS'), useSharedGps ? 'ok' : 'warn')
   log('  配置: 项目=' + (config.showProject ? config.projectName || '(空)' : '关') +
       ' | 地址=' + (config.showAddress ? address || '(空)' : '关') +
@@ -724,6 +746,18 @@ async function startBatchProcess() {
 
       var exifResult = state.exifData.get(key)
       var orientation = exifResult && exifResult.orientation ? exifResult.orientation : 1
+
+      // 照片级调试记录：开局即写入原图与坐标信息
+      var _gpsWgs = (exifResult && exifResult.gps) ? { lat: +exifResult.gps.lat.toFixed(6), lng: +exifResult.gps.lng.toFixed(6) } : null
+      var _gpsGcj = (exifResult && exifResult.gps) ? (function () { try { var g = CoordTransform.wgs84ToGcj02(exifResult.gps.lng, exifResult.gps.lat); return { lat: +g.lat.toFixed(6), lng: +g.lng.toFixed(6) } } catch (e) { return null } })() : null
+      if (typeof WMPhoto === 'function') {
+        WMPhoto(key, {
+          fileName: file.name, originalSizeKB: Math.round(file.size / 1024), type: file.type,
+          hasGps: !!_gpsWgs, gpsWgs84: _gpsWgs, gpsGcj02: _gpsGcj,
+          exifDate: exifResult ? exifResult.date : null, orientation: orientation, startTime: fileStart
+        })
+      }
+      if (typeof WMEvent === 'function') WMEvent('photo:start', { fileName: file.name, key: key, idx: idx })
 
       // 日期：手动输入优先，否则从EXIF获取
       var autoDate = exifResult && exifResult.date
@@ -764,14 +798,16 @@ async function startBatchProcess() {
       if (typeof WatermarkChunked !== 'undefined' && typeof jpeg !== 'undefined') {
         try {
           var arrayBuffer = await file.arrayBuffer()
-          watermarkedBlob = await WatermarkChunked.addWatermarkChunked(arrayBuffer, wmConfig)
+          watermarkedBlob = await WatermarkChunked.addWatermarkChunked(arrayBuffer, wmConfig, null, key)
           arrayBuffer = null  // 释放原始字节
           if (watermarkedBlob) {
             usedChunked = true
             log('  ├─ 分块方案成功（零画质损失）', 'ok')
+            if (typeof WMPhoto === 'function') WMPhoto(key, { usedChunked: true, fallback: false })
           }
         } catch (chunkErr) {
           log('  ⚠️ 分块方案失败: ' + chunkErr.message + '，尝试Canvas方案', 'warn')
+          if (typeof WMEvent === 'function') WMEvent('photo:chunked-failed', { key: key, error: chunkErr.message })
           watermarkedBlob = null
         }
       }
@@ -785,8 +821,9 @@ async function startBatchProcess() {
           var fbOk = false
           for (var fi = 0; fi < fallbackScales.length; fi++) {
             log('  ⚠️ 原尺寸处理失败，尝试缩放至 ' + Math.round(fallbackScales[fi] * 100) + '% 重试...', 'warn')
+            if (typeof WMPhotoStep === 'function') WMPhotoStep(key, 'fallback-forceScale', { scale: fallbackScales[fi] })
             try {
-              var fbBlob = await WatermarkChunked.addWatermarkChunked(fbBuf, wmConfig, fallbackScales[fi])
+              var fbBlob = await WatermarkChunked.addWatermarkChunked(fbBuf, wmConfig, fallbackScales[fi], key)
               if (fbBlob && fbBlob.size >= 100) {
                 watermarkedBlob = fbBlob
                 fbOk = true
@@ -801,6 +838,7 @@ async function startBatchProcess() {
           if (!fbOk) {
             throw new Error('分块方案和缩放降级均失败（内存不足）')
           }
+          if (typeof WMPhoto === 'function') WMPhoto(key, { usedChunked: true, fallback: true })
         } catch (fbReadErr) {
           throw new Error('降级重试失败: ' + fbReadErr.message)
         }
@@ -817,7 +855,10 @@ async function startBatchProcess() {
       // 此时 GPS 坐标已显示在水印栏中，不影响查看
       if (needExif && watermarkedBlob.size > 16 * 1024 * 1024) {
         log('  ├─ 大图(>16MB)跳过EXIF重编码，避免卡顿/内存溢出（GPS已显示在水印栏）', 'warn')
+        if (typeof WMPhoto === 'function') WMPhoto(key, { exifSkippedLarge: true, exifInjected: false })
         needExif = false
+      } else if (needExif) {
+        if (typeof WMPhoto === 'function') WMPhoto(key, { exifInjected: true, exifSource: useSharedGps ? 'sharedGps' : 'orientation' })
       }
 
       var resultBlob = watermarkedBlob
@@ -858,11 +899,16 @@ async function startBatchProcess() {
       var resultBlobUrl = URL.createObjectURL(resultBlob)
       state.processed.set(key, { blob: resultBlob, blobUrl: resultBlobUrl, name: file.name })
 
-      log('  ✅ 完成 (' + (Date.now() - fileStart) + 'ms) 大小=' + Math.round(resultBlob.size / 1024) + 'KB', 'ok')
+      var dur = Date.now() - fileStart
+      log('  ✅ 完成 (' + dur + 'ms) 大小=' + Math.round(resultBlob.size / 1024) + 'KB', 'ok')
+      if (typeof WMPhoto === 'function') WMPhoto(key, { outputSizeKB: Math.round(resultBlob.size / 1024), outputRatio: +(resultBlob.size / file.size * 100).toFixed(0), durationMs: dur, error: null, processed: true })
+      if (typeof WMEvent === 'function') WMEvent('photo:success', { fileName: file.name, key: key, outputSizeKB: Math.round(resultBlob.size / 1024), durationMs: dur })
 
     } catch (e) {
       log('  ❌ 失败: ' + e.message, 'err')
       console.error('[处理失败] ' + file.name, e)
+      if (typeof WMPhoto === 'function') WMPhoto(key, { error: e.message, durationMs: Date.now() - fileStart, processed: false })
+      if (typeof WMEvent === 'function') WMEvent('photo:fail', { fileName: file.name, key: key, error: e.message })
     }
 
     // 释放 canvas 内存，防止批量处理时内存累积
@@ -887,6 +933,7 @@ async function startBatchProcess() {
   var totalCost = Date.now() - state.startTime
   log('---')
   log('🎉 全部完成！' + state.processed.size + '/' + total + ' 张成功，耗时 ' + (totalCost / 1000).toFixed(1) + 's', 'ok')
+  if (typeof WMEvent === 'function') WMEvent('process:end', { success: state.processed.size, total: total, totalCostMs: totalCost })
   progressText.textContent = '完成！' + state.processed.size + '/' + total + ' 张'
 
   state.processing = false
@@ -1085,71 +1132,104 @@ async function saveToAlbum() {
   albumBtn.textContent = '📲 保存到相册'
 }
 
-// ===== 导出调试信息 =====
-function exportDebugInfo() {
+// ===== 导出调试信息（结构化全记录）=====
+// 生成 schemaVersion + environment + summary + photos(含步骤时间线) + events + logs(含t/level/source)
+function buildDebugInfo() {
   var config = getConfig()
   var now = new Date()
+  if (typeof captureEnvironment === 'function') captureEnvironment()  // 导出时刷新环境快照
+  var d = window.WMDebug || {}
+  var env = d.env || {}
 
-  var debugInfo = {
+  // photos: 合并 WMDebug.photos（处理埋点）与 state（原始/处理结果）
+  var photos = state.files.map(function (f) {
+    var key = f.name + '_' + f.size
+    var rec = (d.photos && d.photos[key]) ? JSON.parse(JSON.stringify(d.photos[key])) : { key: key }
+    var exif = state.exifData.get(key)
+    rec.fileName = rec.fileName || f.name
+    rec.originalSizeKB = rec.originalSizeKB != null ? rec.originalSizeKB : Math.round(f.size / 1024)
+    rec.type = rec.type || f.type
+    rec.hasGps = rec.hasGps != null ? rec.hasGps : !!(exif && exif.gps)
+    if (rec.gpsWgs84 == null && exif && exif.gps) rec.gpsWgs84 = { lat: +exif.gps.lat.toFixed(6), lng: +exif.gps.lng.toFixed(6) }
+    if (rec.exifDate == null && exif) rec.exifDate = exif.date
+    rec.processed = state.processed.has(key)
+    if (rec.path == null) rec.path = rec.processed ? 'unknown' : 'not-processed'
+    if (rec.steps == null) rec.steps = []
+    return rec
+  })
+
+  var totalOrig = 0, totalOut = 0, failed = 0, gps = 0
+  photos.forEach(function (p) {
+    if (p.originalSizeKB) totalOrig += p.originalSizeKB
+    if (p.outputSizeKB) totalOut += p.outputSizeKB
+    if (p.error) failed++
+    if (p.hasGps) gps++
+  })
+
+  return {
+    schemaVersion: d.schemaVersion || 3,
+    appVersion: d.appVersion || APP_VERSION,
     exportTime: now.toISOString(),
-    userAgent: navigator.userAgent,
-    language: navigator.language,
-    platform: navigator.platform,
-    cookieEnabled: navigator.cookieEnabled,
-    onLine: navigator.onLine,
-    screenSize: screen.width + '×' + screen.height,
-    windowSize: window.innerWidth + '×' + window.innerHeight,
-
+    url: location.href,
+    environment: env,
+    limits: d.limits || null,
     config: config,
-
-    fileCount: state.files.length,
-    files: state.files.map(function(f) {
-      var key = f.name + '_' + f.size
-      var exif = state.exifData.get(key)
-      return {
-        name: f.name,
-        sizeKB: Math.round(f.size / 1024),
-        type: f.type,
-        lastModified: new Date(f.lastModified).toISOString(),
-        hasGps: !!(exif && exif.gps),
-        gpsWgs84: (exif && exif.gps) ? { lat: exif.gps.lat.toFixed(6), lng: exif.gps.lng.toFixed(6) } : null,
-        exifDate: exif ? exif.date : null,
-        processed: state.processed.has(key)
-      }
-    }),
-
-    processedCount: state.processed.size,
-    hasLocation: !!state.currentLocation,
-    locationGcj02: state.currentLocation ? { lng: state.currentLocation.lng.toFixed(6), lat: state.currentLocation.lat.toFixed(6) } : null,
-
-    logs: []
+    summary: {
+      totalFiles: state.files.length,
+      processed: state.processed.size,
+      failed: failed,
+      gpsFiles: gps,
+      noGpsFiles: state.files.length - gps,
+      totalOriginalKB: totalOrig,
+      totalOutputKB: totalOut,
+      avgOutputRatioPct: totalOrig ? Math.round(totalOut / totalOrig * 100) : null
+    },
+    location: {
+      hasLocation: !!state.currentLocation,
+      locationGcj02: state.currentLocation ? { lng: +state.currentLocation.lng.toFixed(6), lat: +state.currentLocation.lat.toFixed(6) } : null
+    },
+    photos: photos,
+    events: d.events || [],
+    logs: (d.entries || []).map(function (e) {
+      return { t: new Date(e.t).toISOString(), ts: e.t, level: e.level, source: e.source, msg: e.msg }
+    })
   }
+}
 
-  // 收集日志区域内容
-  var logArea = document.getElementById('logArea')
-  if (logArea) {
-    var logLines = logArea.querySelectorAll('div')
-    for (var i = 0; i < logLines.length; i++) {
-      debugInfo.logs.push(logLines[i].textContent)
-    }
-  }
-
-  // 生成 JSON 文件并下载
+function exportDebugInfo() {
+  var debugInfo = buildDebugInfo()
   var jsonStr = JSON.stringify(debugInfo, null, 2)
   var blob = new Blob([jsonStr], { type: 'application/json' })
   var url = URL.createObjectURL(blob)
   var a = document.createElement('a')
   a.href = url
-  a.download = 'watermark-debug-' + formatDateCompact(now) + '.json'
+  a.download = 'watermark-debug-' + formatDateCompact(new Date()) + '.json'
   document.body.appendChild(a)
   a.click()
-  setTimeout(function() {
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }, 100)
+  setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url) }, 100)
+  showToast('调试信息已导出 (' + debugInfo.photos.length + ' 张照片, ' + debugInfo.logs.length + ' 条日志)')
+  log('[导出] 调试信息已导出: ' + debugInfo.photos.length + ' 张照片, ' + debugInfo.logs.length + ' 条日志', 'ok')
+}
 
-  showToast('调试信息已导出')
-  log('[导出] 调试信息已导出 ' + debugInfo.fileCount + ' 张照片，' + debugInfo.logs.length + ' 条日志', 'ok')
+function copyDebugInfo() {
+  try {
+    var debugInfo = buildDebugInfo()
+    var jsonStr = JSON.stringify(debugInfo, null, 2)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(jsonStr).then(function () {
+        showToast('调试信息已复制到剪贴板')
+        log('[导出] 调试信息已复制到剪贴板 (' + debugInfo.logs.length + ' 条日志)', 'ok')
+      }, function (err) {
+        showToast('复制失败，请改用「导出」下载文件')
+        log('[导出] 复制到剪贴板失败: ' + (err && err.message), 'warn')
+      })
+    } else {
+      showToast('当前环境不支持复制，请改用「导出」')
+    }
+  } catch (e) {
+    showToast('复制失败: ' + e.message)
+    log('[导出] 复制失败: ' + e.message, 'err')
+  }
 }
 
 // ===== 配置 =====
@@ -1250,6 +1330,8 @@ function formatDateCompact(date) {
 }
 
 function log(msg, level) {
+  // 同步写入结构化调试记录（带来源 'ui'），供导出 JSON 使用
+  if (typeof WMLog === 'function') WMLog(level || 'info', msg, 'ui')
   var logArea = document.getElementById('logArea')
   if (!logArea) return
   var cls = level === 'ok' ? 'log-ok' : level === 'warn' ? 'log-warn' : level === 'err' ? 'log-err' : ''
@@ -1260,8 +1342,81 @@ function log(msg, level) {
   logArea.scrollTop = logArea.scrollHeight
 }
 
-function showToast(msg) {
-  var toast = document.getElementById('toast')
+// 探测运行环境能力（写入调试记录，排障时一目了然）
+function captureEnvironment() {
+  var env = {}
+  function safe(name, fn) { try { env[name] = fn() } catch (e) { env[name] = 'ERR:' + e.message } }
+
+  safe('userAgent', function () { return navigator.userAgent })
+  safe('platform', function () { return navigator.platform })
+  safe('language', function () { return navigator.language })
+  safe('languages', function () { return (navigator.languages || []).join(',') })
+  safe('vendor', function () { return navigator.vendor })
+  safe('deviceMemoryGB', function () { return navigator.deviceMemory })
+  safe('hardwareConcurrency', function () { return navigator.hardwareConcurrency })
+  safe('maxTouchPoints', function () { return navigator.maxTouchPoints })
+  safe('onLine', function () { return navigator.onLine })
+  safe('cookieEnabled', function () { return navigator.cookieEnabled })
+
+  safe('screen', function () {
+    return { w: screen.width, h: screen.height, availW: screen.availWidth, availH: screen.availHeight, colorDepth: screen.colorDepth, dpr: window.devicePixelRatio }
+  })
+  safe('window', function () { return { w: window.innerWidth, h: window.innerHeight } })
+  safe('theme', function () { return document.documentElement.classList.contains('dark') ? 'dark' : 'light' })
+  safe('timezone', function () { return Intl.DateTimeFormat().resolvedOptions().timeZone })
+  safe('now', function () { return new Date().toISOString() })
+
+  safe('features', function () {
+    return {
+      createImageBitmap: typeof createImageBitmap,
+      OffscreenCanvas: typeof OffscreenCanvas,
+      canvasToBlob: typeof HTMLCanvasElement !== 'undefined' && typeof HTMLCanvasElement.prototype.toBlob,
+      canvasToDataURL: typeof HTMLCanvasElement !== 'undefined' && typeof HTMLCanvasElement.prototype.toDataURL,
+      Worker: typeof Worker,
+      fetch: typeof fetch,
+      Blob: typeof Blob,
+      createImageBitmapResize: (typeof createImageBitmap === 'function')
+    }
+  })
+
+  // Canvas 上限探测：逐级尝试创建超大 Canvas（理论值）
+  safe('canvasProbe', function () {
+    var out = { theoreticalMaxSide: 16383 }
+    var c = document.createElement('canvas')
+    var sides = [16383, 12000, 8192, 4096]
+    for (var i = 0; i < sides.length; i++) {
+      try { c.width = sides[i]; c.height = 1; if (c.width === sides[i]) { out.maxSideOk = sides[i]; break } } catch (e) {}
+    }
+    return out
+  })
+
+  safe('perfMemory', function () {
+    if (typeof performance !== 'undefined' && performance.memory) {
+      return {
+        usedJSHeapMB: Math.round(performance.memory.usedJSHeapSize / 1048576),
+        totalJSHeapMB: Math.round(performance.memory.totalJSHeapSize / 1048576),
+        jsHeapLimitMB: Math.round(performance.memory.jsHeapSizeLimit / 1048576)
+      }
+    }
+    return null
+  })
+
+  // 高德 Key 仅保留后 4 位，便于确认是否配置而不泄露
+  safe('amapKeyMasked', function () {
+    var k = AMAP_WEB_KEY || ''
+    return k.length > 4 ? '***' + k.slice(-4) : (k ? '***' : '(空)')
+  })
+  safe('storageLocal', function () { return typeof localStorage !== 'undefined' })
+
+  if (window.WMDebug) {
+    window.WMDebug.env = env
+    window.WMDebug.appVersion = APP_VERSION
+    window.WMDebug.url = location.href
+  }
+  return env
+}
+
+function showToast(msg) {  var toast = document.getElementById('toast')
   if (!toast) {
     toast = document.createElement('div')
     toast.id = 'toast'
