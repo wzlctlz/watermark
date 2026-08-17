@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v2026-08-17-aperture'
+const APP_VERSION = 'v2026-08-17-favrefresh'
 
 // ===== 全局状态 =====
 const state = {
@@ -32,12 +32,39 @@ const state = {
   selectedIdx: -1,
 }
 
+// ===== 强制刷新书签/桌面图标（浏览器无直接 API，靠改 URL 缓存键实现）=====
+// 原理：浏览器按「图标文件 URL（含查询串）」缓存 favicon。给每个图标链接追加 ?v=APP_VERSION，
+// URL 改变即视为新资源并重新下载 —— 当前已打开标签页立即生效，下次访问书签也会拉取新版图标。
+// 暴露到 window.refreshFavicon()，可在控制台手动调用以立即强制刷新当前页图标。
+function refreshFavicon() {
+  try {
+    var ver = APP_VERSION
+    var sel = 'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]'
+    document.querySelectorAll(sel).forEach(function (link) {
+      var href = link.getAttribute('href')
+      if (!href) return
+      var base = href.split('?')[0]
+      link.setAttribute('href', base + '?v=' + encodeURIComponent(ver))
+    })
+    var manifest = document.querySelector('link[rel="manifest"]')
+    if (manifest) {
+      var m = (manifest.getAttribute('href') || '').split('?')[0]
+      manifest.setAttribute('href', m + '?v=' + encodeURIComponent(ver))
+    }
+    log('[图标] 已按版本 ' + ver + ' 刷新书签/桌面图标缓存键', 'ok')
+  } catch (e) {
+    if (typeof WMLog === 'function') WMLog('err', '[图标刷新] ' + e.message, 'favicon')
+  }
+}
+window.refreshFavicon = refreshFavicon
+
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
   log('水印相机 ' + APP_VERSION + ' (左上角艺术角标/动态包围框/加号修复版)', 'ok')
   console.log('[水印相机] 版本: ' + APP_VERSION)
   captureEnvironment()
   initTheme()
+  refreshFavicon() // 以当前版本号刷新图标缓存键，确保已打开标签页显示最新书签图标
   setupDragDrop()
   setupFileInputs()
   loadSavedConfig()
