@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v2026-08-17-bar'
+const APP_VERSION = 'v2026-08-17-ux'
 
 // ===== 全局状态 =====
 const state = {
@@ -34,7 +34,7 @@ const state = {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-  log('水印相机 ' + APP_VERSION + ' (信息栏圆角避让/4字标签对齐/地图放大版)', 'ok')
+  log('水印相机 ' + APP_VERSION + ' (左上角艺术角标/动态包围框/加号修复版)', 'ok')
   console.log('[水印相机] 版本: ' + APP_VERSION)
   captureEnvironment()
   initTheme()
@@ -337,6 +337,7 @@ function scaleInput(input, maxDim) {
 function updateUI() {
   var grid = document.getElementById('photoGrid')
   var photoEmpty = document.getElementById('photoEmpty')
+  var downloadBtn = document.getElementById('downloadBtn')
 
   var gpsCount = 0, noGpsCount = 0, doneCount = 0
   state.files.forEach(function(f) {
@@ -352,71 +353,86 @@ function updateUI() {
   document.getElementById('statNoGps').textContent = noGpsCount
   document.getElementById('statDone').textContent = doneCount
 
-  // 保留加号格引用，重建时始终把它放到最后
+  // 先脱离加号格，避免下面的清空操作把它销毁；finally 中始终重新追加到末尾
   var addCell = document.getElementById('addCell')
   if (addCell && addCell.parentNode) addCell.parentNode.removeChild(addCell)
 
-  if (state.files.length === 0) {
-    grid.innerHTML = ''
-    if (addCell) grid.appendChild(addCell)
-    photoEmpty.style.display = ''
-    document.getElementById('downloadBtn').disabled = true
-    return
-  }
-
-  photoEmpty.style.display = 'none'
-  grid.innerHTML = ''
-  state.files.forEach(function(file, idx) {
-    var key = file.name + '_' + file.size
-    var exif = state.exifData.get(key)
-    var isProcessed = state.processed.has(key)
-
-    var item = document.createElement('div')
-    item.className = 'photo-item'
-    if (state.selectMode) item.className += ' select-mode'
-    if (idx === state.selectedIdx) item.className += ' selected'
-
-    var thumbUrl = URL.createObjectURL(file)
-    var badgeHtml = isProcessed
-      ? '<span class="badge badge-done">✓</span>'
-      : (exif && exif.gps ? '<span class="badge badge-gps">GPS</span>' : '<span class="badge badge-nogps">无GPS</span>')
-
-    var resBadge = getResBadge(exif)
-    var resBadgeHtml = resBadge
-      ? '<span class="badge badge-res" style="background:' + resBadge.color + '">' + resBadge.text + '</span>'
-      : ''
-
-    item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">'
-      + badgeHtml + resBadgeHtml
-      + '<div class="filename">' + file.name + '</div>'
-
-    // 删除按钮（右上角）—— 用文件对象做唯一标识，避免索引在删除后错位
-    var deleteBtn = document.createElement('button')
-    deleteBtn.className = 'btn-delete'
-    deleteBtn.textContent = '×'
-    deleteBtn.title = '删除此照片'
-    deleteBtn.addEventListener('pointerdown', function(e) {
-      e.preventDefault()
-      e.stopPropagation()
-      // 通过文件引用找到当前索引，避免闭包捕获的索引过期
-      var currentIdx = state.files.indexOf(file)
-      if (currentIdx >= 0) removePhoto(currentIdx)
-    })
-    deleteBtn.addEventListener('click', function(e) {
-      e.preventDefault()
-      e.stopPropagation()
-      var currentIdx = state.files.indexOf(file)
-      if (currentIdx >= 0) removePhoto(currentIdx)
-    })
-    item.appendChild(deleteBtn)
-    if (state.selectMode) {
-      item.addEventListener('click', function() { selectPhotoForInfo(idx) })
-    } else {
-      item.addEventListener('click', function() { showPreview(file, exif, isProcessed) })
+  try {
+    if (state.files.length === 0) {
+      grid.innerHTML = ''
+      photoEmpty.style.display = ''
+      downloadBtn.disabled = true
+      return
     }
-    grid.appendChild(item)
-  })
-  if (addCell) grid.appendChild(addCell)
+
+    photoEmpty.style.display = 'none'
+    grid.innerHTML = ''
+    state.files.forEach(function(file, idx) {
+      var key = file.name + '_' + file.size
+      var exif = state.exifData.get(key)
+      var isProcessed = state.processed.has(key)
+
+      var item = document.createElement('div')
+      item.className = 'photo-item'
+      if (state.selectMode) item.className += ' select-mode'
+      if (idx === state.selectedIdx) item.className += ' selected'
+
+      var thumbUrl = URL.createObjectURL(file)
+
+      // 左上角艺术角标：GPS 状态 + 分辨率
+      var cornerHtml = ''
+      if (isProcessed) {
+        cornerHtml += '<span class="chip chip-done">✓ 已处理</span>'
+      } else if (exif && exif.gps) {
+        cornerHtml += '<span class="chip chip-gps">◉ GPS</span>'
+      } else {
+        cornerHtml += '<span class="chip chip-nogps">⚠ 无GPS</span>'
+      }
+      var resBadge = getResBadge(exif)
+      if (resBadge) {
+        cornerHtml += '<span class="chip chip-res">' + resBadge.text + '</span>'
+        cornerHtml += '<span class="res-art">' + resBadge.text + '</span>'
+      }
+      var cornerDiv = '<div class="corner">' + cornerHtml + '</div>'
+
+      // 选中照片的酷炫包围框
+      var selFrame = (idx === state.selectedIdx)
+        ? '<div class="sel-frame"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i></div>'
+        : ''
+
+      item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">'
+        + cornerDiv + selFrame
+        + '<div class="filename">' + file.name + '</div>'
+
+      // 删除按钮（右上角）—— 用文件对象做唯一标识，避免索引在删除后错位
+      var deleteBtn = document.createElement('button')
+      deleteBtn.className = 'btn-delete'
+      deleteBtn.textContent = '×'
+      deleteBtn.title = '删除此照片'
+      deleteBtn.addEventListener('pointerdown', function(e) {
+        e.preventDefault()
+        e.stopPropagation()
+        var currentIdx = state.files.indexOf(file)
+        if (currentIdx >= 0) removePhoto(currentIdx)
+      })
+      deleteBtn.addEventListener('click', function(e) {
+        e.preventDefault()
+        e.stopPropagation()
+        var currentIdx = state.files.indexOf(file)
+        if (currentIdx >= 0) removePhoto(currentIdx)
+      })
+      item.appendChild(deleteBtn)
+      if (state.selectMode) {
+        item.addEventListener('click', function() { selectPhotoForInfo(idx) })
+      } else {
+        item.addEventListener('click', function() { showPreview(file, exif, isProcessed) })
+      }
+      grid.appendChild(item)
+    })
+  } finally {
+    // 无论渲染是否异常，加号格始终回到网格末尾
+    if (addCell) grid.appendChild(addCell)
+  }
 }
 
 // ===== 删除照片 =====

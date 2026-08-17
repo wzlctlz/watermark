@@ -83,8 +83,18 @@
       transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
     }
     .photo-item:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.12); border-color: rgba(16,185,129,.4); }
-    .photo-item.selected { border: 2px solid var(--danger); box-shadow: 0 0 0 3px rgba(239,68,68,.18); }
+    .photo-item.selected { border-color: transparent; }
     .photo-item.select-mode { cursor: crosshair; }
+    /* 选中态：四角括号 + 呼吸辉光包围框 */
+    .sel-frame { position: absolute; inset: 0; border-radius: 16px; pointer-events: none; z-index: 9;
+      box-shadow: inset 0 0 0 2px rgba(239,68,68,.9), 0 0 16px rgba(239,68,68,.5);
+      animation: selPulse 1.5s ease-in-out infinite; }
+    .sel-frame .c { position: absolute; width: 18px; height: 18px; border: 3px solid #ef4444; }
+    .sel-frame .tl { top: 5px; left: 5px; border-right: none; border-bottom: none; border-top-left-radius: 7px; }
+    .sel-frame .tr { top: 5px; right: 5px; border-left: none; border-bottom: none; border-top-right-radius: 7px; }
+    .sel-frame .bl { bottom: 5px; left: 5px; border-right: none; border-top: none; border-bottom-left-radius: 7px; }
+    .sel-frame .br { bottom: 5px; right: 5px; border-left: none; border-top: none; border-bottom-right-radius: 7px; }
+    @keyframes selPulse { 0%,100% { box-shadow: inset 0 0 0 2px rgba(239,68,68,.85), 0 0 14px rgba(239,68,68,.4); } 50% { box-shadow: inset 0 0 0 3px rgba(239,68,68,1), 0 0 24px rgba(239,68,68,.75); } }
     .photo-item.select-mode:hover { border-color: var(--danger); box-shadow: 0 6px 16px rgba(239,68,68,.14); }
     .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .photo-item .btn-delete {
@@ -96,11 +106,20 @@
     .photo-item .btn-delete:active { transform: scale(.9); }
     .photo-item:hover .btn-delete { opacity: 1; }
     @media (hover: none) { .photo-item .btn-delete { opacity: .85; } }
-    .photo-item .badge { position: absolute; top: 6px; right: 6px; padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: 700; color: #fff; line-height: 1.2; }
-    .badge-gps { background: var(--success); }
-    .badge-nogps { background: var(--warning); }
-    .badge-done { background: var(--primary); }
-    .photo-item .badge-res { position: absolute; top: 6px; left: 6px; padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: 800; color: #fff; line-height: 1.2; width: auto; }
+    /* 左上角艺术角标：GPS 状态 + 半行艺术字分辨率 */
+    .photo-item .corner { position: absolute; top: 7px; left: 7px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; z-index: 5; pointer-events: none; }
+    .corner .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 9px;
+      font-size: 10px; font-weight: 800; letter-spacing: .02em; color: #fff; line-height: 1.1;
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,.35); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+    .corner .chip-gps { background: linear-gradient(135deg, rgba(16,185,129,.94), rgba(6,182,212,.94)); }
+    .corner .chip-nogps { background: linear-gradient(135deg, rgba(245,158,11,.96), rgba(239,68,68,.94)); }
+    .corner .chip-done { background: linear-gradient(135deg, rgba(99,102,241,.96), rgba(168,85,247,.96)); }
+    .corner .chip-res { background: linear-gradient(135deg, rgba(15,23,42,.8), rgba(30,41,59,.8)); }
+    /* 大号半透明艺术字分辨率，压在左上角半行 */
+    .corner .res-art { font-family: 'Arial Black','PingFang SC','Microsoft YaHei',sans-serif; font-weight: 900;
+      font-size: 30px; line-height: .9; letter-spacing: -.02em; color: rgba(255,255,255,.22);
+      text-shadow: 0 2px 10px rgba(0,0,0,.45); margin-left: 1px; }
     .photo-item .filename { position: absolute; bottom: 0; left: 0; right: 0; padding: 4px 6px; background: rgba(0,0,0,.55); color: #fff; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* ===== 添加照片格（末尾 + 号） ===== */
