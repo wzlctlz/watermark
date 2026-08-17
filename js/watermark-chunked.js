@@ -256,7 +256,7 @@ const WatermarkChunked = (() => {
     var bmpW = imgBitmap.width
     var bmpH = imgBitmap.height
     // 信息栏高度自适应（按原图宽度计算布局，合成时等比缩放到最终宽度）
-    var barLayout = computeBarLayout(imgW, config)
+    var barLayout = computeBarLayout(imgW, imgH, config)
     var barH = barLayout.height
     var outBarH = Math.max(1, Math.round(barH * (bmpW / imgW)))
     if (key) WMPerf.stage(key, tag + 'decode', {
@@ -270,7 +270,7 @@ const WatermarkChunked = (() => {
     }
 
     // 4. 画信息栏（按原图宽度绘制，合成时缩放到最终宽度）
-    var barCanvas = drawInfoBar(imgW, config, barLayout)
+    var barCanvas = drawInfoBar(imgW, imgH, config, barLayout)
     if (key) WMPerf.stage(key, tag + 'drawBar', { barW: imgW, barH: barH })
 
     // 5. Canvas 合成（始终走原生编码）
@@ -402,8 +402,8 @@ const WatermarkChunked = (() => {
     if (key) WMPhotoStep(key, 'jpegjs-decode-ok', { originalW: imgW, originalH: imgH, pixelsMB: +(rawImage.data.length / 1024 / 1024).toFixed(1) })
 
     // 画信息栏
-    var barLayoutJ = computeBarLayout(imgW, config)
-    var barCanvas = drawInfoBar(imgW, config, barLayoutJ)
+    var barLayoutJ = computeBarLayout(imgW, imgH, config)
+    var barCanvas = drawInfoBar(imgW, imgH, config, barLayoutJ)
     if (key) WMPerf.stage(key, '[jpegjs]drawBar', { barW: imgW, barH: barLayoutJ.height })
     var barCtx = barCanvas.getContext('2d')
     var barPixels = barCtx.getImageData(0, 0, imgW, barLayoutJ.height).data
@@ -502,7 +502,7 @@ const WatermarkChunked = (() => {
   function clampNum(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 
   // 计算信息栏布局：高度自适应，单栏每行一条信息，冒号对齐，标签加粗
-  function computeBarLayout(imgW, config) {
+  function computeBarLayout(imgW, imgH, config) {
     // 关键：白条高度必须按「图像长边」缩放，而非宽度(imgW)。
     // 竖向照片 imgW 是短边，若按 imgW 算白条会明显变矮；用 max(imgW,imgH) 后，
     // 横竖屏同像素尺寸的照片白条高度一致，且横屏行为完全不变。
@@ -580,8 +580,8 @@ const WatermarkChunked = (() => {
     }
   }
 
-  function drawInfoBar(imgW, config, layout) {
-    if (!layout) layout = computeBarLayout(imgW, config)
+  function drawInfoBar(imgW, imgH, config, layout) {
+    if (!layout) layout = computeBarLayout(imgW, imgH, config)
     var barCanvas = document.createElement('canvas')
     barCanvas.width = imgW
     barCanvas.height = layout.height
