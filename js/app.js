@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v2026-08-17-quality'
+const APP_VERSION = 'v2026-08-17-favicon'
 
 // ===== 全局状态 =====
 const state = {
