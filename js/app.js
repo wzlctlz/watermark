@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v2026-08-17-scale'
+const APP_VERSION = 'v2026-08-17-polish'
 
 // ===== 全局状态 =====
 const state = {
@@ -336,7 +336,6 @@ function scaleInput(input, maxDim) {
 // ===== 更新 UI =====
 function updateUI() {
   var grid = document.getElementById('photoGrid')
-  var photoEmpty = document.getElementById('photoEmpty')
   var downloadBtn = document.getElementById('downloadBtn')
 
   var gpsCount = 0, noGpsCount = 0, doneCount = 0
@@ -360,12 +359,10 @@ function updateUI() {
   try {
     if (state.files.length === 0) {
       grid.innerHTML = ''
-      photoEmpty.style.display = ''
       downloadBtn.disabled = true
       return
     }
 
-    photoEmpty.style.display = 'none'
     grid.innerHTML = ''
     state.files.forEach(function(file, idx) {
       var key = file.name + '_' + file.size
@@ -397,7 +394,7 @@ function updateUI() {
 
       // 选中照片的酷炫包围框
       var selFrame = (idx === state.selectedIdx)
-        ? '<div class="sel-frame"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i></div>'
+        ? '<div class="sel-frame"></div>'
         : ''
 
       item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">'
