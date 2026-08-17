@@ -9,7 +9,7 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v20260817-2311'
+const APP_VERSION = 'v20260817-2318'
 
 // ===== 全局状态 =====
 const state = {
@@ -57,6 +57,36 @@ function refreshFavicon() {
   }
 }
 window.refreshFavicon = refreshFavicon
+
+// ===== 禁止页面缩放（仿应用体验）=====
+// 屏蔽 pinch 双指缩放与双击缩放，让控件不被放大错位；预览弹窗内允许缩放以查看细节
+(function () {
+  function inPreview(t) { return t && t.closest && t.closest('#previewModal') }
+  // iOS Safari 双指缩放事件
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (type) {
+    document.addEventListener(type, function (e) {
+      if (!inPreview(e.target)) e.preventDefault()
+    }, { passive: false })
+  })
+  // 多指触摸（双指捏合），允许在预览弹窗内缩放
+  document.addEventListener('touchmove', function (e) {
+    if (e.touches && e.touches.length > 1 && !inPreview(e.target)) e.preventDefault()
+  }, { passive: false })
+  // 桌面端触控板/ Ctrl+滚轮 缩放
+  document.addEventListener('wheel', function (e) {
+    if (e.ctrlKey && !inPreview(e.target)) e.preventDefault()
+  }, { passive: false })
+  // 双击缩放（300ms 内两次轻触判定为双击）
+  var lastTouchEnd = 0
+  document.addEventListener('touchend', function (e) {
+    var now = Date.now()
+    if (now - lastTouchEnd < 300 && !inPreview(e.target)) e.preventDefault()
+    lastTouchEnd = now
+  }, { passive: false })
+  document.addEventListener('dblclick', function (e) {
+    if (!inPreview(e.target)) e.preventDefault()
+  })
+})()
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
@@ -426,7 +456,6 @@ function updateUI() {
 
       item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">'
         + cornerDiv + selFrame
-        + '<div class="filename">' + file.name + '</div>'
 
       // 删除按钮（右上角）—— 用文件对象做唯一标识，避免索引在删除后错位
       var deleteBtn = document.createElement('button')
@@ -479,7 +508,6 @@ function showPreview(file, exif, isProcessed) {
   var key = file.name + '_' + file.size
   var modal = document.getElementById('previewModal')
   var img = document.getElementById('previewImg')
-  var info = document.getElementById('previewInfo')
 
   if (isProcessed) {
     var processedObj = state.processed.get(key)
@@ -487,24 +515,6 @@ function showPreview(file, exif, isProcessed) {
   } else {
     img.src = URL.createObjectURL(file)
   }
-
-  var infoHtml = ''
-  // 文件大小（MB）
-  infoHtml += '<span>📦 ' + (file.size / (1024 * 1024)).toFixed(2) + ' MB</span>'
-  // 分辨率
-  var resBadge = getResBadge(exif)
-  if (resBadge) {
-    var w = exif.imgWidth || 0
-    var h = exif.imgHeight || 0
-    infoHtml += '<span>🖼 ' + resBadge.text + (w && h ? ' (' + w + '×' + h + ')' : '') + '</span>'
-  }
-  if (exif && exif.gps) {
-    infoHtml += '<span>📍 WGS84: ' + exif.gps.lat.toFixed(6) + ', ' + exif.gps.lng.toFixed(6) + '</span>'
-  }
-  if (exif && exif.date) {
-    infoHtml += '<span>📅 ' + exif.date + '</span>'
-  }
-  info.innerHTML = infoHtml
 
   modal.classList.add('active')
 }
