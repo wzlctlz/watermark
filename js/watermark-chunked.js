@@ -514,11 +514,9 @@ const WatermarkChunked = (() => {
     // 左右圆角安全内缩：文字整体右移，避免进入圆角被裁切
     var cornerInset = Math.round(imgW * 0.018)
 
-    // 右侧地图区域（先给初值，稍后按竖向高度微调）
+    // 右侧地图区域参数
     var mapMargin = Math.round(imgW * 0.012)
     var mapGap = Math.round(imgW * 0.006) + 8
-    var mapSize0 = clampNum(Math.round(imgW * 0.1), 160, 900)
-    var mapAreaW = mapSize0 + mapMargin * 2
 
     var mCanvas = document.createElement('canvas')
     var mctx = mCanvas.getContext('2d')
@@ -541,30 +539,47 @@ const WatermarkChunked = (() => {
     var contentX = textLeft + colW + gapToColon
 
     mctx.font = VALUE_FS + 'px ' + FONT_FAMILY
-    var itemsLayout = []
-    var itemsTotal = 0
-    items.forEach(function (it) {
-      var valLines = wrapText(mctx, it.value || '', (imgW - mapAreaW - PAD) - contentX)
-      var n = valLines.length
-      var h = n * lineHeight + (n > 0 ? itemGap : 0)
-      itemsLayout.push({ label: it.label, valLines: valLines, h: h })
-      itemsTotal += h
-    })
 
+    // 迭代计算地图尺寸：先按最小地图宽度初算文字高度，
+    // 再以"内容高度稍小"为地图目标尺寸，重算文字列宽度并收敛。
+    var mapSize0 = clampNum(Math.round(imgW * 0.1), 160, 900)
+    var mapAreaW = mapSize0 + mapMargin * 2
+
+    function layoutForMap(w) {
+      var list = []
+      var total = 0
+      items.forEach(function (it) {
+        var valLines = wrapText(mctx, it.value || '', (imgW - w - PAD) - contentX)
+        var n = valLines.length
+        var h = n * lineHeight + (n > 0 ? itemGap : 0)
+        list.push({ label: it.label, valLines: valLines, h: h })
+        total += h
+      })
+      return { list: list, total: total }
+    }
+
+    var first = layoutForMap(mapAreaW)
     var titleBlockH = titleFS + Math.round(titleFS * 0.28) + Math.round(titleFS * 0.22)
     var top = PAD + titleBlockH
 
     // 内容高度（不含地图）
-    var contentH = top + itemsTotal + PAD
+    var contentH = top + first.total + PAD
 
-    // 地图尺寸：尽量填满竖向留白，但比内容高度稍小一点，不压住顶/底边框线
-    var mapSize = clampNum(
-      Math.round(Math.min(mapSize0, contentH - mapMargin * 2 - mapGap)),
-      160, 900
-    )
+    // 地图尺寸：以"比内容高度稍小"填满竖向留白，不再受原图宽度10%限制
+    var mapSize = clampNum(Math.round(contentH - mapMargin * 2 - mapGap), 160, 900)
+    mapAreaW = mapSize + mapMargin * 2
+
+    // 用实际地图宽度重算文字换行，防止地图变大挤压文字后宽度不一致
+    var second = layoutForMap(mapAreaW)
+    var contentH2 = top + second.total + PAD
+    // 最终地图高度不能超过新的内容高度减去边距（避免地图压住顶/底边框）
+    mapSize = clampNum(Math.min(mapSize, Math.round(contentH2 - mapMargin * 2 - mapGap)), 160, 900)
+    mapAreaW = mapSize + mapMargin * 2
+
+    var itemsLayout = second.list
     var minH = mapSize + mapMargin * 2 + mapGap
     // 底部圆角留白
-    var height = Math.max(contentH, minH) + cornerInset
+    var height = Math.max(contentH2, minH) + cornerInset
 
     return {
       titleFS: titleFS, LABEL_FS: LABEL_FS, VALUE_FS: VALUE_FS, PAD: PAD,
