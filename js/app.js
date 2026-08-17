@@ -776,60 +776,33 @@ async function startBatchProcess() {
         }
       }
 
-      // 方案2: 传统Canvas方案（降级）
+      // 方案2: 分块方案强制缩放降级（仍走原生 Canvas toBlob，避免文件暴涨/画质有损）
+      // 仅在方案1返回 null/抛错时触发（极少数超大/异常图片）
       if (!watermarkedBlob) {
-        var imgInput
-        var isBitmap = false
         try {
-          var bitmap = await createImageBitmap(file)
-          imgInput = bitmap
-          isBitmap = true
-        } catch (e) {
-          imgInput = await ExifUtils.fileToImage(file)
-        }
-
-        watermarkedBlob = await Watermark.addWatermark(imgInput, wmConfig)
-
-        // 释放 ImageBitmap
-        if (isBitmap && imgInput && typeof imgInput.close === 'function') {
-          imgInput.close()
-          imgInput = null
-        }
-
-        // Canvas方案失败，尝试缩放重试
-        var failed = !watermarkedBlob || watermarkedBlob.size < 100
-        if (failed) {
-          var retryDims = [4096, 2048]
-          for (var ri = 0; ri < retryDims.length; ri++) {
-            log('  ⚠️ Canvas原尺寸失败，尝试缩小至 ' + retryDims[ri] + 'px...', 'warn')
+          var fbBuf = await file.arrayBuffer()
+          var fallbackScales = [0.6, 0.4, 0.25, 0.12]
+          var fbOk = false
+          for (var fi = 0; fi < fallbackScales.length; fi++) {
+            log('  ⚠️ 原尺寸处理失败，尝试缩放至 ' + Math.round(fallbackScales[fi] * 100) + '% 重试...', 'warn')
             try {
-              var retryBitmap = await createImageBitmap(file)
-              imgInput = scaleInput(retryBitmap, retryDims[ri])
-            } catch (e3) {
-              imgInput = await ExifUtils.fileToImage(file)
-              imgInput = scaleInput(imgInput, retryDims[ri])
-            }
-
-            var wmCanvas = document.getElementById('watermarkCanvas')
-            if (wmCanvas) { var wmCtx = wmCanvas.getContext('2d'); wmCtx.clearRect(0,0,wmCanvas.width,wmCanvas.height); wmCanvas.width=1; wmCanvas.height=1 }
-
-            await new Promise(function(r) { setTimeout(r, 100) })
-
-            watermarkedBlob = await Watermark.addWatermark(imgInput, wmConfig)
-
-            if (imgInput && typeof imgInput.close === 'function') imgInput.close()
-            imgInput = null
-
-            if (watermarkedBlob && watermarkedBlob.size >= 100) {
-              log('  ✅ 缩放至 ' + retryDims[ri] + 'px 后成功（画质有损）', 'ok')
-              failed = false
-              break
+              var fbBlob = await WatermarkChunked.addWatermarkChunked(fbBuf, wmConfig, fallbackScales[fi])
+              if (fbBlob && fbBlob.size >= 100) {
+                watermarkedBlob = fbBlob
+                fbOk = true
+                log('  ✅ 缩放 ' + Math.round(fallbackScales[fi] * 100) + '% 成功，输出 ' + Math.round(fbBlob.size / 1024) + 'KB', 'ok')
+                break
+              }
+            } catch (fbErr) {
+              log('  ⚠️ 缩放 ' + Math.round(fallbackScales[fi] * 100) + '% 失败: ' + fbErr.message, 'warn')
             }
           }
-        }
-
-        if (failed) {
-          throw new Error('分块方案和Canvas方案均失败（内存不足）')
+          fbBuf = null
+          if (!fbOk) {
+            throw new Error('分块方案和缩放降级均失败（内存不足）')
+          }
+        } catch (fbReadErr) {
+          throw new Error('降级重试失败: ' + fbReadErr.message)
         }
       }
 

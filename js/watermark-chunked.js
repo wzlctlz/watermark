@@ -1,11 +1,12 @@
 /**
  * watermark-chunked.js - 分块水印（优先 Canvas toBlob）
- * @version 2026-08-17  (设备感知上限 + 超大图等比缩放，避免回退到极慢的 jpeg-js)
+ * @version 2026-08-17-v2  (resize 解码自救 + forceScale 强制缩放，杜绝超大图降级到暴涨文件)
  *
  * 策略：
  *   1. 优先 Canvas + toBlob（浏览器原生编码，文件小、速度快）
- *   2. 超大图（超出安全上限）按安全上限等比缩放后，仍走原生 Canvas 合成
- *   3. 仅在浏览器硬限制（尺寸/内存）彻底无法创建 Canvas 时，才降级到 jpeg-js
+ *   2. 先用轻量方式取尺寸，再用 createImageBitmap 的 resize 选项直接解码到安全尺寸
+ *      —— 超大图不再因解码失败直接放弃，也不会回退到会暴涨文件的旧 Canvas 路径
+ *   3. 支持 forceScale 强制缩放（app.js 降级重试时调用，保证文件大小正常、几乎无感画质损失）
  *
  * 关于输出文件大小：
  *   toBlob() 不指定质量时，浏览器默认质量通常与原图编码质量接近
@@ -32,10 +33,10 @@ const WatermarkChunked = (() => {
   // 主入口
   // ============================================================
 
-  async function addWatermarkChunked(jpegArrayBuffer, config) {
-    // 路径一：Canvas + toBlob（浏览器原生编码器，必要时等比缩放）
+  async function addWatermarkChunked(jpegArrayBuffer, config, forceScale) {
+    // 路径一：Canvas + toBlob（浏览器原生编码器，必要时等比缩放/缩小解码）
     try {
-      var result = await encodeViaCanvas(jpegArrayBuffer, config)
+      var result = await encodeViaCanvas(jpegArrayBuffer, config, forceScale)
       if (result) return result
     } catch (e) {
       console.warn('[分块水印] Canvas路径失败，降级到jpeg-js:', e.message)
@@ -49,65 +50,83 @@ const WatermarkChunked = (() => {
   // 路径一：Canvas + toBlob
   // ============================================================
 
-  async function encodeViaCanvas(jpegArrayBuffer, config) {
-    // 1. 用 ImageBitmap 加载原图（不占 JS 堆内存）
+  async function encodeViaCanvas(jpegArrayBuffer, config, forceScale) {
+    // 1. 轻量获取原图尺寸（不创建大 bitmap，避免超大图在 iOS 上直接解码失败/内存溢出）
     var imgBlob = new Blob([jpegArrayBuffer], { type: 'image/jpeg' })
-    var imgBitmap
-    try {
-      imgBitmap = await createImageBitmap(imgBlob)
-    } catch (e) {
-      console.error('[分块水印-Canvas] ImageBitmap 解码失败:', e.message)
+    var dims = await getImageSize(imgBlob)
+    if (!dims || !dims.w || !dims.h) {
+      console.error('[分块水印-Canvas] 无法获取原图尺寸')
       return null
     }
+    var imgW = dims.w
+    var imgH = dims.h
 
-    var imgW = imgBitmap.width
-    var imgH = imgBitmap.height
+    // 2. 计算安全缩放比例（支持外部强制缩放 forceScale，用于降级重试）
+    var scale = computeScale(imgW, imgH, forceScale)
+    var targetW = Math.max(1, Math.round(imgW * scale))
+    var targetH = Math.max(1, Math.round(imgH * scale))
 
-    // 2. 计算安全缩放比例：保证「整图 + 信息栏」能放进安全 Canvas 上限
-    //    同时不超过浏览器单边长硬上限，避免创建 Canvas 失败
-    var scale = 1
-    var fullPx = imgW * (imgH + BAR_H)
-    if (fullPx > MAX_CANVAS_PIXELS) {
-      scale = Math.sqrt(MAX_CANVAS_PIXELS / fullPx)
+    // 3. 用 resize 选项直接解码到目标尺寸（关键：避免超大 bitmap 解码失败/内存溢出）
+    var imgBitmap = null
+    try {
+      if (typeof createImageBitmap === 'function') {
+        imgBitmap = await createImageBitmap(imgBlob, {
+          resizeWidth: targetW, resizeHeight: targetH, resizeQuality: 'high'
+        })
+      }
+    } catch (e) {
+      console.warn('[分块水印-Canvas] resize 解码不支持/失败，进入缩小自救:', e.message)
     }
-    var safeW = imgW * scale
-    var safeTotalH = (imgH + BAR_H) * scale
-    if (safeW > MAX_CANVAS_DIM || safeTotalH > MAX_CANVAS_DIM) {
-      var dimScale = Math.min(MAX_CANVAS_DIM / safeW, MAX_CANVAS_DIM / safeTotalH)
-      scale = Math.min(scale, dimScale)
+    // resize 失败 → 逐级缩小再解码（自愈超大图，避免直接放弃）
+    if (!imgBitmap) {
+      var rescueScales = [0.5, 0.25, 0.1]
+      for (var ri = 0; ri < rescueScales.length && !imgBitmap; ri++) {
+        try {
+          imgBitmap = await createImageBitmap(imgBlob, {
+            resizeWidth: Math.max(1, Math.round(imgW * rescueScales[ri])),
+            resizeHeight: Math.max(1, Math.round(imgH * rescueScales[ri])),
+            resizeQuality: 'high'
+          })
+        } catch (e3) { /* 尝试更小尺寸 */ }
+      }
     }
-    scale = Math.min(1, Math.max(0.05, scale))
+    if (!imgBitmap) {
+      try {
+        imgBitmap = await createImageBitmap(imgBlob)
+      } catch (e2) {
+        console.error('[分块水印-Canvas] ImageBitmap 解码失败:', e2.message)
+        return null
+      }
+    }
 
-    var outW = Math.max(1, Math.round(imgW * scale))
-    var outImgH = Math.max(1, Math.round(imgH * scale))
-    var outBarH = Math.max(1, Math.round(BAR_H * scale))
-    var totalH = outImgH + outBarH
+    var bmpW = imgBitmap.width
+    var bmpH = imgBitmap.height
+    var outBarH = Math.max(1, Math.round(BAR_H * (bmpW / imgW)))
 
-    if (scale < 1) {
-      console.log('[分块水印-Canvas] 原图 ' + imgW + 'x' + imgH + ' (' + Math.round(fullPx/1024/1024) + 'MP) 超出安全上限，等比缩放至 ' + outW + 'x' + outImgH + ' (scale=' + scale.toFixed(2) + ')')
+    if (scale < 0.999) {
+      console.log('[分块水印-Canvas] 原图 ' + imgW + 'x' + imgH + ' 等比缩放至 ' + bmpW + 'x' + bmpH + ' (scale=' + scale.toFixed(2) + ')')
     } else {
       console.log('[分块水印-Canvas] 原图 ' + imgW + 'x' + imgH + ' (' + Math.round(jpegArrayBuffer.byteLength / 1024) + 'KB)')
     }
 
-    // 3. 画信息栏（全分辨率小 Canvas，内存小；合成时再缩放到目标尺寸）
+    // 4. 画信息栏（按原图宽度绘制，合成时缩放到最终宽度）
     var barCanvas = drawInfoBar(imgW, config)
 
-    // 4. Canvas 合成（按需缩放，始终走原生编码）
+    // 5. Canvas 合成（始终走原生编码）
     var canvas = document.createElement('canvas')
-    canvas.width = outW
-    canvas.height = totalH
+    canvas.width = bmpW
+    canvas.height = bmpH + outBarH
     var ctx = canvas.getContext('2d')
-    ctx.drawImage(imgBitmap, 0, 0, outW, outImgH)
-    ctx.drawImage(barCanvas, 0, 0, imgW, BAR_H, 0, outImgH, outW, outBarH)
+    ctx.drawImage(imgBitmap, 0, 0)
+    ctx.drawImage(barCanvas, 0, 0, imgW, BAR_H, 0, bmpH, bmpW, outBarH)
 
     // 立即释放源，节省内存
-    imgBitmap.close()
+    if (imgBitmap.close) imgBitmap.close()
     barCanvas.width = 1
     barCanvas.height = 1
     barCanvas = null
 
-    // 5. toBlob 编码 —— 不指定质量，让浏览器用默认质量
-    //    浏览器默认质量通常与原图编码质量接近，输出大小合理
+    // 6. toBlob 编码 —— 不指定质量，让浏览器用默认质量（与原图接近，文件大小正常）
     var blob = await canvasToBlob(canvas)
 
     canvas.width = 1
@@ -122,6 +141,42 @@ const WatermarkChunked = (() => {
     var ratio = (blob.size / jpegArrayBuffer.byteLength * 100).toFixed(0)
     console.log('[分块水印-Canvas] 完成，输出 ' + Math.round(blob.size / 1024) + 'KB (原图 ' + Math.round(jpegArrayBuffer.byteLength / 1024) + 'KB, ' + ratio + '%)')
     return blob
+  }
+
+  // 轻量获取图片尺寸（不创建全分辨率 bitmap）
+  function getImageSize(blob) {
+    return new Promise(function(resolve) {
+      var url = URL.createObjectURL(blob)
+      var img = new Image()
+      img.onload = function() {
+        var w = img.naturalWidth, h = img.naturalHeight
+        URL.revokeObjectURL(url)
+        resolve({ w: w, h: h })
+      }
+      img.onerror = function() {
+        URL.revokeObjectURL(url)
+        resolve(null)
+      }
+      img.src = url
+    })
+  }
+
+  // 计算安全缩放比例（支持 forceScale 强制缩放）
+  function computeScale(imgW, imgH, forceScale) {
+    if (forceScale && forceScale > 0 && forceScale < 1) {
+      return Math.min(1, forceScale)
+    }
+    var fullPx = imgW * (imgH + BAR_H)
+    var scale = 1
+    if (fullPx > MAX_CANVAS_PIXELS) {
+      scale = Math.sqrt(MAX_CANVAS_PIXELS / fullPx)
+    }
+    var safeTotalH = (imgH + BAR_H) * scale
+    if (imgW * scale > MAX_CANVAS_DIM || safeTotalH > MAX_CANVAS_DIM) {
+      var dimScale = Math.min(MAX_CANVAS_DIM / (imgW * scale), MAX_CANVAS_DIM / safeTotalH)
+      scale = Math.min(scale, dimScale)
+    }
+    return Math.min(1, Math.max(0.05, scale))
   }
 
   function canvasToBlob(canvas) {
