@@ -177,6 +177,27 @@
     /* 实时性能指示：简洁文字 */
     .perf-live { margin-top: 10px; font-size: 12px; color: var(--text2); }
 
+    /* ===== 统计徽章（强制四等分，自动缩放，保持相对位置不变） ===== */
+    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(6px, 1.6vw, 12px); }
+    .stat-chip {
+      display: flex; align-items: center; justify-content: center; gap: clamp(3px, 0.8vw, 6px);
+      padding: clamp(5px, 1.2vw, 9px) clamp(5px, 1.2vw, 12px);
+      border-radius: 999px; white-space: nowrap; min-width: 0;
+      background: var(--input-bg); border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+      transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .stat-chip:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0,0,0,.08); }
+    .stat-dot { width: clamp(6px, 1.2vw, 8px); height: clamp(6px, 1.2vw, 8px); border-radius: 50%; flex-shrink: 0; }
+    .stat-label { font-size: clamp(10px, 2.8vw, 12px); color: var(--text2); font-weight: 500; }
+    .stat-num { font-size: clamp(12px, 3.2vw, 14px); color: var(--text); font-weight: 700; }
+    @media (max-width: 360px) {
+      .stat-row { gap: 5px; }
+      .stat-chip { padding: 5px 6px; }
+      .stat-label { display: none; }
+      .stat-num { font-size: 13px; }
+    }
+
     /* ===== 开关 ===== */
     .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
     .switch input { opacity: 0; width: 0; height: 0; }
@@ -263,18 +284,26 @@
         <span class="text-xs text-slate-400 dark:text-slate-500">点击末尾加号添加，支持多选</span>
       </div>
       <div class="p-5">
-        <div id="statsCard" class="flex flex-wrap gap-2.5 mb-4">
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>总计 <b id="statTotal" class="text-slate-800 dark:text-white ml-0.5">0</b>
+        <div id="statsCard" class="stat-row mb-4">
+          <div class="stat-chip" title="总计">
+            <span class="stat-dot bg-emerald-500"></span>
+            <span class="stat-label">总计</span>
+            <b id="statTotal" class="stat-num">0</b>
           </div>
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>有GPS <b id="statGps" class="text-slate-800 dark:text-white ml-0.5">0</b>
+          <div class="stat-chip" title="有GPS">
+            <span class="stat-dot bg-emerald-500"></span>
+            <span class="stat-label">有GPS</span>
+            <b id="statGps" class="stat-num">0</b>
           </div>
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
-            <span class="w-2 h-2 rounded-full bg-amber-500"></span>无GPS <b id="statNoGps" class="text-slate-800 dark:text-white ml-0.5">0</b>
+          <div class="stat-chip" title="无GPS">
+            <span class="stat-dot bg-amber-500"></span>
+            <span class="stat-label">无GPS</span>
+            <b id="statNoGps" class="stat-num">0</b>
           </div>
-          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100/80 dark:bg-slate-700/50 text-xs text-slate-500 dark:text-slate-300">
-            <span class="w-2 h-2 rounded-full bg-violet-500"></span>已处理 <b id="statDone" class="text-slate-800 dark:text-white ml-0.5">0</b>
+          <div class="stat-chip" title="已处理">
+            <span class="stat-dot bg-violet-500"></span>
+            <span class="stat-label">已处理</span>
+            <b id="statDone" class="stat-num">0</b>
           </div>
         </div>
 
