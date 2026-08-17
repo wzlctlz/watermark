@@ -1,38 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.22"/>
-    </filter>
-    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f8fafc"/>
-      <stop offset="1" stop-color="#e2e8f0"/>
-    </linearGradient>
-  </defs>
-
-  <rect x="28" y="28" width="456" height="456" rx="96" fill="url(#bgGrad)" stroke="#cbd5e1" stroke-width="6"/>
+  <rect width="512" height="512" fill="#ffffff" rx="0"/>
 
   <!-- 相机机身 -->
-  <g filter="url(#shadow)">
-    <rect x="96" y="216" width="320" height="184" rx="40" fill="#0f172a"/>
-    <rect x="192" y="176" width="128" height="56" rx="24" fill="#0f172a"/>
-    <rect x="120" y="192" width="48" height="32" rx="14" fill="#0f172a"/>
-  </g>
+  <rect x="66" y="180" width="380" height="200" rx="40" fill="#000000"/>
+  <!-- 顶部凸起 -->
+  <rect x="92" y="150" width="64" height="46" rx="20" fill="#000000"/>
+  <rect x="206" y="118" width="100" height="74" rx="40" fill="#000000"/>
 
-  <!-- 镜头外圈 -->
-  <circle cx="256" cy="308" r="130" fill="none" stroke="#0f172a" stroke-width="14"/>
-  <circle cx="256" cy="308" r="122" fill="#ffffff"/>
+  <!-- 机身两侧白色横条（被镜头覆盖中间部分） -->
+  <rect x="66" y="240.0" width="380" height="14" fill="#ffffff"/>
+  <rect x="66" y="312.0" width="380" height="14" fill="#ffffff"/>
+
+  <!-- 镜头外圈黑边 -->
+  <circle cx="256" cy="280" r="120" fill="none" stroke="#000000" stroke-width="14"/>
+  <!-- 镜头白底 -->
+  <circle cx="256" cy="280" r="113" fill="#ffffff"/>
 
   <!-- 彩色光圈叶片 -->
   <g>
-    <path d="M 235.2 264.8 L 203.1 198.1 A 122 122 0 0 1 305.1 196.3 L 275.3 264.1 A 48 48 0 0 0 235.2 264.8 Z" fill="#3b82f6"/>
-    <path d="M 276.8 264.8 L 308.9 198.1 A 122 122 0 0 1 373.9 276.7 L 302.4 295.7 A 48 48 0 0 0 276.8 264.8 Z" fill="#8b5cf6"/>
-    <path d="M 302.8 297.3 L 374.9 280.9 A 122 122 0 0 1 354.0 380.7 L 294.5 336.6 A 48 48 0 0 0 302.8 297.3 Z" fill="#ef4444"/>
-    <path d="M 293.5 337.9 L 351.4 384.1 A 122 122 0 0 1 260.3 429.9 L 257.7 356.0 A 48 48 0 0 0 293.5 337.9 Z" fill="#f97316"/>
-    <path d="M 256.0 356.0 L 256.0 430.0 A 122 122 0 0 1 163.3 387.3 L 219.5 339.2 A 48 48 0 0 0 256.0 356.0 Z" fill="#facc15"/>
-    <path d="M 218.5 337.9 L 160.6 384.1 A 122 122 0 0 1 136.2 285.0 L 208.9 299.0 A 48 48 0 0 0 218.5 337.9 Z" fill="#84cc16"/>
-    <path d="M 209.2 297.3 L 137.1 280.9 A 122 122 0 0 1 199.3 200.0 L 233.7 265.5 A 48 48 0 0 0 209.2 297.3 Z" fill="#06b6d4"/>
+    <path d="M 238.8 238.4 L 230.8 175.0 A 108 108 0 0 1 309.2 186.0 L 271.8 237.8 A 45 45 0 0 0 238.8 238.4 Z" fill="#3b82f6"/>
+    <path d="M 273.2 238.4 L 312.4 187.9 A 108 108 0 0 1 360.1 251.1 L 296.9 261.3 A 45 45 0 0 0 273.2 238.4 Z" fill="#a855f7"/>
+    <path d="M 297.6 262.8 L 361.0 254.8 A 108 108 0 0 1 350.0 333.2 L 298.2 295.8 A 45 45 0 0 0 297.6 262.8 Z" fill="#991b1b"/>
+    <path d="M 297.6 297.2 L 348.1 336.4 A 108 108 0 0 1 284.9 384.1 L 274.7 320.9 A 45 45 0 0 0 297.6 297.2 Z" fill="#dc2626"/>
+    <path d="M 273.2 321.6 L 281.2 385.0 A 108 108 0 0 1 202.8 374.0 L 240.2 322.2 A 45 45 0 0 0 273.2 321.6 Z" fill="#f97316"/>
+    <path d="M 238.8 321.6 L 199.6 372.1 A 108 108 0 0 1 151.9 308.9 L 215.1 298.7 A 45 45 0 0 0 238.8 321.6 Z" fill="#facc15"/>
+    <path d="M 214.4 297.2 L 151.0 305.2 A 108 108 0 0 1 162.0 226.8 L 213.8 264.2 A 45 45 0 0 0 214.4 297.2 Z" fill="#84cc16"/>
+    <path d="M 214.4 262.8 L 163.9 223.6 A 108 108 0 0 1 227.1 175.9 L 237.3 239.1 A 45 45 0 0 0 214.4 262.8 Z" fill="#06b6d4"/>
   </g>
 
-  <!-- 中心光圈开口 -->
-  <circle cx="256" cy="308" r="52" fill="#ffffff"/>
+  <!-- 中心白色光圈开口 -->
+  <circle cx="256" cy="280" r="45" fill="#ffffff"/>
 </svg>

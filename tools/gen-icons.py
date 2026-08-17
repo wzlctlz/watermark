@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-生成水印相机书签/桌面图标套件（相机 + 彩色光圈叶片样式）。
+生成水印相机书签/桌面图标套件。
+严格按模板绘制：黑色相机机身 + 双侧白色横条 + 顶部双凸起 + 中心彩色螺旋光圈。
 SVG 矢量图标为主，PNG/ICO 兜底兼容。
 """
 from PIL import Image, ImageDraw, ImageFilter
@@ -12,22 +13,28 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 设计参数（基于 512×512 视图）
 PARAMS = {
-    'bg_pad': 28,
-    'bg_radius': 96,
-    'body': (96, 216, 320, 184, 40),   # x, y, w, h, rx
-    'bump': (192, 176, 128, 56, 24),   # 取景器凸起
-    'button': (120, 192, 48, 32, 14),  # 左侧肩部按钮
+    'bg': '#ffffff',              # 模板为纯白背景
+    'bg_radius': 0,               # 模板背景无明显圆角
+    'body': (66, 180, 380, 200, 40),   # x, y, w, h, rx
+    'bump_l': (92, 150, 64, 46, 20),   # 左侧小凸起
+    'bump_r': (206, 118, 100, 74, 40), # 右侧大取景器凸起
+    'strip_h': 14,                # 机身白色横条高度
+    'strip_y1': 0.30,             # 第一条横条相对机身顶部的位置
+    'strip_y2': 0.66,             # 第二条横条相对机身顶部的位置
     'lens_cx': 256,
-    'lens_cy': 308,
-    'lens_outer_r': 130,
-    'lens_stroke': 14,
-    'lens_inner_r': 122,
-    'blade_r_in': 48,
-    'blade_r_out': 122,
-    'blade_count': 7,
-    'blade_gap': 2,                    # 叶片之间间隙（度）
-    'center_r': 52,
-    'colors': ['#3b82f6', '#8b5cf6', '#ef4444', '#f97316', '#facc15', '#84cc16', '#06b6d4'],
+    'lens_cy': 280,
+    'lens_outer_r': 120,          # 镜头外圈半径
+    'lens_stroke': 14,            # 外圈黑边宽度
+    'lens_inner_r': 113,          # 黑边内侧（白底填充到此）
+    'blade_r_in': 45,             # 彩色叶片内径
+    'blade_r_out': 108,           # 彩色叶片外径
+    'blade_count': 8,             # 模板约 8 片彩色叶片
+    'blade_gap': 2,               # 叶片间间隙（度）
+    'blade_twist': 9,             # 外缘相对内缘的旋转角，形成螺旋
+    'center_r': 45,               # 中心白色光圈开口
+    # 叶片颜色，顺时针从正上方开始：蓝/紫/暗红/红/橙/黄/绿/青
+    'colors': ['#3b82f6', '#a855f7', '#991b1b', '#dc2626',
+               '#f97316', '#facc15', '#84cc16', '#06b6d4'],
 }
 
 
@@ -46,6 +53,7 @@ def make_svg():
     cx, cy = p['lens_cx'], p['lens_cy']
     n = p['blade_count']
     gap = p['blade_gap']
+    twist = p['blade_twist']
     sweep = 360.0 / n
     blade_a = sweep - gap
     r_in = p['blade_r_in']
@@ -55,11 +63,13 @@ def make_svg():
         a = math.radians(deg - 90)  # 0° 指向正上方
         return (cx + r * math.cos(a), cy + r * math.sin(a))
 
-    def sector_path(start_deg, end_deg):
-        p1 = pt(cx, cy, r_in, start_deg)
-        p2 = pt(cx, cy, r_out, start_deg)
-        p3 = pt(cx, cy, r_out, end_deg)
-        p4 = pt(cx, cy, r_in, end_deg)
+    def blade_path(start_inner, end_inner):
+        start_outer = start_inner + twist
+        end_outer = end_inner + twist
+        p1 = pt(cx, cy, r_in, start_inner)
+        p2 = pt(cx, cy, r_out, start_outer)
+        p3 = pt(cx, cy, r_out, end_outer)
+        p4 = pt(cx, cy, r_in, end_inner)
         return (
             f"M {p1[0]:.1f} {p1[1]:.1f} "
             f"L {p2[0]:.1f} {p2[1]:.1f} "
@@ -70,45 +80,41 @@ def make_svg():
 
     blades = []
     for i, color in enumerate(p['colors']):
-        start = i * sweep - sweep / 2  # 首片居中朝上
-        end = start + blade_a
-        blades.append(f'    <path d="{sector_path(start, end)}" fill="{color}"/>')
+        start_inner = i * sweep - sweep / 2  # 首片居中朝上
+        end_inner = start_inner + blade_a
+        blades.append(f'    <path d="{blade_path(start_inner, end_inner)}" fill="{color}"/>')
 
     bx, by, bw, bh, br = p['body']
-    ux, uy, uw, uh, ur = p['bump']
-    sx, sy, sw, sh, sr = p['button']
+    lx, ly, lw, lh, lr = p['bump_l']
+    rx, ry, rw, rh, rr = p['bump_r']
+    sy1 = by + bh * p['strip_y1']
+    sy2 = by + bh * p['strip_y2']
 
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.22"/>
-    </filter>
-    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f8fafc"/>
-      <stop offset="1" stop-color="#e2e8f0"/>
-    </linearGradient>
-  </defs>
-
-  <rect x="{p['bg_pad']}" y="{p['bg_pad']}" width="{512 - 2 * p['bg_pad']}" height="{512 - 2 * p['bg_pad']}" rx="{p['bg_radius']}" fill="url(#bgGrad)" stroke="#cbd5e1" stroke-width="6"/>
+  <rect width="512" height="512" fill="{p['bg']}" rx="{p['bg_radius']}"/>
 
   <!-- 相机机身 -->
-  <g filter="url(#shadow)">
-    <rect x="{bx}" y="{by}" width="{bw}" height="{bh}" rx="{br}" fill="#0f172a"/>
-    <rect x="{ux}" y="{uy}" width="{uw}" height="{uh}" rx="{ur}" fill="#0f172a"/>
-    <rect x="{sx}" y="{sy}" width="{sw}" height="{sh}" rx="{sr}" fill="#0f172a"/>
-  </g>
+  <rect x="{bx}" y="{by}" width="{bw}" height="{bh}" rx="{br}" fill="#000000"/>
+  <!-- 顶部凸起 -->
+  <rect x="{lx}" y="{ly}" width="{lw}" height="{lh}" rx="{lr}" fill="#000000"/>
+  <rect x="{rx}" y="{ry}" width="{rw}" height="{rh}" rx="{rr}" fill="#000000"/>
 
-  <!-- 镜头外圈 -->
-  <circle cx="{cx}" cy="{cy}" r="{p['lens_outer_r']}" fill="none" stroke="#0f172a" stroke-width="{p['lens_stroke']}"/>
-  <circle cx="{cx}" cy="{cy}" r="{p['lens_inner_r']}" fill="#ffffff"/>
+  <!-- 机身两侧白色横条（被镜头覆盖中间部分） -->
+  <rect x="{bx}" y="{sy1}" width="{bw}" height="{p['strip_h']}" fill="{p['bg']}"/>
+  <rect x="{bx}" y="{sy2}" width="{bw}" height="{p['strip_h']}" fill="{p['bg']}"/>
+
+  <!-- 镜头外圈黑边 -->
+  <circle cx="{cx}" cy="{cy}" r="{p['lens_outer_r']}" fill="none" stroke="#000000" stroke-width="{p['lens_stroke']}"/>
+  <!-- 镜头白底 -->
+  <circle cx="{cx}" cy="{cy}" r="{p['lens_inner_r']}" fill="{p['bg']}"/>
 
   <!-- 彩色光圈叶片 -->
   <g>
 {chr(10).join(blades)}
   </g>
 
-  <!-- 中心光圈开口 -->
-  <circle cx="{cx}" cy="{cy}" r="{p['center_r']}" fill="#ffffff"/>
+  <!-- 中心白色光圈开口 -->
+  <circle cx="{cx}" cy="{cy}" r="{p['center_r']}" fill="{p['bg']}"/>
 </svg>'''
 
 
@@ -122,84 +128,76 @@ def make_png(size):
             return tuple(int(x * scale) for x in v)
         return int(v * scale)
 
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    img = Image.new('RGBA', (size, size), hex_to_rgba(p['bg'], 0))
     draw = ImageDraw.Draw(img)
 
-    # ===== 背景（浅灰渐变 + 圆角边框） =====
-    bg_pad = s(p['bg_pad'])
-    bg_radius = s(p['bg_radius'])
-    bg = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    bg_draw = ImageDraw.Draw(bg)
-    for y in range(size):
-        t = y / (size - 1) if size > 1 else 0
-        r = int(lerp(248, 226, t))
-        g = int(lerp(250, 232, t))
-        b = int(lerp(252, 240, t))
-        bg_draw.line([(0, y), (size, y)], fill=(r, g, b, 255))
+    # ===== 背景 =====
+    draw.rounded_rectangle([0, 0, size - 1, size - 1],
+                           radius=s(p['bg_radius']), fill=hex_to_rgba(p['bg']))
 
-    mask = Image.new('L', (size, size), 0)
-    mask_draw = ImageDraw.Draw(mask)
-    mask_draw.rounded_rectangle(
-        [bg_pad, bg_pad, size - bg_pad, size - bg_pad],
-        radius=bg_radius, fill=255
-    )
-    img.paste(bg, (0, 0), mask)
-    draw.rounded_rectangle(
-        [bg_pad, bg_pad, size - bg_pad, size - bg_pad],
-        radius=bg_radius, outline=(203, 213, 225, 255), width=s(6)
-    )
-
-    # ===== 相机机身（带投影） =====
+    # ===== 相机机身 =====
     bx, by, bw, bh, br = s(p['body'])
-    ux, uy, uw, uh, ur = s(p['bump'])
-    sx, sy, sw, sh, sr = s(p['button'])
+    lx, ly, lw, lh, lr = s(p['bump_l'])
+    rx, ry, rw, rh, rr = s(p['bump_r'])
     boxes = [
         (bx, by, bx + bw, by + bh),
-        (ux, uy, ux + uw, uy + uh),
-        (sx, sy, sx + sw, sy + sh),
+        (lx, ly, lx + lw, ly + lh),
+        (rx, ry, rx + rw, ry + rh),
     ]
-    radiuses = [s(p['body'][4]), s(p['bump'][4]), s(p['button'][4])]
+    radiuses = [s(p['body'][4]), s(p['bump_l'][4]), s(p['bump_r'][4])]
 
+    # 轻微投影
     shadow = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     sdraw = ImageDraw.Draw(shadow)
     for box, r in zip(boxes, radiuses):
-        sdraw.rounded_rectangle(box, radius=r, fill=(15, 23, 42, 120))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(s(10)))
+        sdraw.rounded_rectangle(box, radius=r, fill=(0, 0, 0, 90))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(s(8)))
     img.alpha_composite(shadow)
 
     for box, r in zip(boxes, radiuses):
-        draw.rounded_rectangle(box, radius=r, fill=(15, 23, 42, 255))
+        draw.rounded_rectangle(box, radius=r, fill=(0, 0, 0, 255))
 
-    # ===== 镜头外圈 + 内白底 =====
+    # ===== 机身白色横条 =====
+    sy1 = int(by + bh * p['strip_y1'])
+    sy2 = int(by + bh * p['strip_y2'])
+    sh = s(p['strip_h'])
+    draw.rectangle([bx, sy1, bx + bw, sy1 + sh], fill=hex_to_rgba(p['bg']))
+    draw.rectangle([bx, sy2, bx + bw, sy2 + sh], fill=hex_to_rgba(p['bg']))
+
+    # ===== 镜头外圈 + 白底 =====
     cx, cy = s(p['lens_cx']), s(p['lens_cy'])
     outer_r = s(p['lens_outer_r'])
     inner_r = s(p['lens_inner_r'])
     draw.ellipse([cx - outer_r, cy - outer_r, cx + outer_r, cy + outer_r],
-                 fill=(15, 23, 42, 255))
+                 fill=(0, 0, 0, 255))
     draw.ellipse([cx - inner_r, cy - inner_r, cx + inner_r, cy + inner_r],
-                 fill=(255, 255, 255, 255))
+                 fill=hex_to_rgba(p['bg']))
 
-    # ===== 彩色光圈叶片（扇环） =====
+    # ===== 彩色光圈叶片 =====
     n = p['blade_count']
     gap = p['blade_gap']
+    twist = p['blade_twist']
     sweep = 360.0 / n
     blade_a = sweep - gap
     r_in = s(p['blade_r_in'])
     r_out = s(p['blade_r_out'])
 
     for i, color in enumerate(p['colors']):
-        start = i * sweep - sweep / 2
-        end = start + blade_a
+        start_inner = i * sweep - sweep / 2
+        end_inner = start_inner + blade_a
+        start_outer = start_inner + twist
+        end_outer = end_inner + twist
+
         pts = []
-        steps = 40
-        # 外弧
+        steps = 32
+        # 外缘（顺时针）
         for j in range(steps + 1):
-            deg = start + (end - start) * j / steps
+            deg = start_outer + (end_outer - start_outer) * j / steps
             a = math.radians(deg - 90)
             pts.append((cx + r_out * math.cos(a), cy + r_out * math.sin(a)))
-        # 内弧（反向）
+        # 内缘（逆时针返回）
         for j in range(steps, -1, -1):
-            deg = start + (end - start) * j / steps
+            deg = start_inner + (end_inner - start_inner) * j / steps
             a = math.radians(deg - 90)
             pts.append((cx + r_in * math.cos(a), cy + r_in * math.sin(a)))
         draw.polygon(pts, fill=hex_to_rgba(color))
@@ -207,7 +205,7 @@ def make_png(size):
     # ===== 中心白色光圈开口 =====
     center_r = s(p['center_r'])
     draw.ellipse([cx - center_r, cy - center_r, cx + center_r, cy + center_r],
-                 fill=(255, 255, 255, 255))
+                 fill=hex_to_rgba(p['bg']))
 
     return img
 
@@ -227,9 +225,9 @@ def main():
         192: 'icon-192.png',
         512: 'icon-512.png',
     }
-    for s in sizes:
-        im = make_png(s)
-        im.save(os.path.join(ROOT, filenames[s]), optimize=True)
+    for sz in sizes:
+        im = make_png(sz)
+        im.save(os.path.join(ROOT, filenames[sz]), optimize=True)
 
     # 3. 多尺寸 ICO（兼容旧版 IE/Edge 书签）
     im32 = make_png(32)
@@ -243,8 +241,8 @@ def main():
     )
 
     print('图标生成完成：')
-    for s in sizes:
-        print('  -', filenames[s])
+    for sz in sizes:
+        print('  -', filenames[sz])
     print('  - favicon.ico')
     print('  - favicon.svg')
 

@@ -503,7 +503,10 @@ const WatermarkChunked = (() => {
 
   // 计算信息栏布局：高度自适应，单栏每行一条信息，冒号对齐，标签加粗
   function computeBarLayout(imgW, config) {
-    var s = imgW / 1000
+    // 关键：白条高度必须按「图像长边」缩放，而非宽度(imgW)。
+    // 竖向照片 imgW 是短边，若按 imgW 算白条会明显变矮；用 max(imgW,imgH) 后，
+    // 横竖屏同像素尺寸的照片白条高度一致，且横屏行为完全不变。
+    var s = Math.max(imgW, imgH) / 1000
     var titleFS = clampNum(Math.round(s * 8), 44, 110)
     var LABEL_FS = clampNum(Math.round(s * 5.5), 32, 82)
     var VALUE_FS = clampNum(Math.round(s * 7), 40, 96)
@@ -514,11 +517,12 @@ const WatermarkChunked = (() => {
     // 左右圆角安全内缩：文字整体右移，避免进入圆角被裁切
     var cornerInset = Math.round(imgW * 0.018)
 
-    // 右侧地图区域（先给初值，稍后按竖向高度微调）
+    // 右侧地图区域：目标为占底部白条可用高度的 90%；
+    // 宽度上限锁在图宽 25%（maxMapW），文字列据此预留，确保地图永远不会压住文字
     var mapMargin = Math.round(imgW * 0.012)
     var mapGap = Math.round(imgW * 0.006) + 8
-    var mapSize0 = clampNum(Math.round(imgW * 0.1), 160, 900)
-    var mapAreaW = mapSize0 + mapMargin * 2
+    var maxMapW = clampNum(Math.round(imgW * 0.25), 160, 900)
+    var mapAreaW = maxMapW + mapMargin * 2
 
     var mCanvas = document.createElement('canvas')
     var mctx = mCanvas.getContext('2d')
@@ -557,11 +561,10 @@ const WatermarkChunked = (() => {
     // 内容高度（不含地图）
     var contentH = top + itemsTotal + PAD
 
-    // 地图尺寸：尽量填满竖向留白，但比内容高度稍小一点，不压住顶/底边框线
-    var mapSize = clampNum(
-      Math.round(Math.min(mapSize0, contentH - mapMargin * 2 - mapGap)),
-      160, 900
-    )
+    // 地图尺寸：占底部白条可用高度的 90%。
+    // 白条高度由文字内容(contentH)主导，地图只填满竖向留白，不会反向撑高白条。
+    var available = contentH - mapMargin * 2 - mapGap
+    var mapSize = clampNum(Math.round(available * 0.9), 160, maxMapW)
     var minH = mapSize + mapMargin * 2 + mapGap
     // 底部圆角留白
     var height = Math.max(contentH, minH) + cornerInset
