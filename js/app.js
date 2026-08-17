@@ -31,12 +31,46 @@ const state = {
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', function() {
-  log('📌 水印相机 v2026-08-17 (Key内置/高分辨率优化版)', 'ok')
-  console.log('[水印相机] 版本: v2026-06-11-2232')
+  log('📌 水印相机 v2026-08-17 (Key内置/高分辨率优化/明暗主题版)', 'ok')
+  console.log('[水印相机] 版本: v2026-08-17')
+  initTheme()
   setupDragDrop()
   setupFileInputs()
   loadSavedConfig()
 })
+
+// ===== 主题：明暗 / 跟随系统 =====
+function getStoredTheme() {
+  try { return localStorage.getItem('wm-theme') || 'system' } catch (e) { return 'system' }
+}
+function applyTheme() {
+  var theme = getStoredTheme()
+  var sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  var isDark = theme === 'dark' || (theme === 'system' && sysDark)
+  document.documentElement.classList.toggle('dark', isDark)
+  document.documentElement.setAttribute('data-theme', theme)
+  updateThemeIcon(theme, isDark)
+}
+// 主题循环：system → light → dark → system
+function cycleTheme() {
+  var cur = getStoredTheme()
+  var next = cur === 'system' ? 'light' : cur === 'light' ? 'dark' : 'system'
+  try { localStorage.setItem('wm-theme', next) } catch (e) {}
+  applyTheme()
+}
+function updateThemeIcon(theme, isDark) {
+  var icon = document.getElementById('themeIcon')
+  var label = document.getElementById('themeLabel')
+  if (icon) icon.textContent = theme === 'system' ? '🌐' : isDark ? '🌙' : '☀️'
+  if (label) label.textContent = theme === 'system' ? '跟随系统' : (isDark ? '夜间' : '日间')
+}
+function initTheme() {
+  applyTheme()
+  var mq = window.matchMedia('(prefers-color-scheme: dark)')
+  var handler = function() { if (getStoredTheme() === 'system') applyTheme() }
+  if (mq.addEventListener) mq.addEventListener('change', handler)
+  else if (mq.addListener) mq.addListener(handler)
+}
 
 // ===== 拖拽支持 =====
 function setupDragDrop() {
@@ -661,6 +695,11 @@ async function startBatchProcess() {
 
   progressArea.style.display = ''
   logCard.style.display = ''
+  // 处理时自动展开日志
+  var logBody = document.getElementById('logBody')
+  if (logBody) logBody.style.display = ''
+  var logToggleTxt = document.querySelector('#logCard .log-toggle-text')
+  if (logToggleTxt) logToggleTxt.textContent = '收起 ▲'
   logArea.innerHTML = ''
   processBtn.disabled = true
 
