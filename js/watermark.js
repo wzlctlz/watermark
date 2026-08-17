@@ -285,77 +285,86 @@ const Watermark = (() => {
   }
 
   /**
+   * 高德 API 调用调试反馈：写入应用内日志窗口 + console
+   */
+  function amapDebug(msg, level) {
+    try {
+      if (typeof window !== 'undefined' && typeof window.log === 'function') {
+        window.log('[高德] ' + msg, level || 'info')
+      }
+    } catch (e) { /* 忽略日志组件异常 */ }
+    if (level === 'err') console.error('[高德] ' + msg)
+    else if (level === 'warn') console.warn('[高德] ' + msg)
+    else console.log('[高德] ' + msg)
+  }
+
+  /**
    * 加载高德静态地图
+   *
+   * 高德静态地图服务返回 Access-Control-Allow-Origin: *，因此可直接以
+   * crossOrigin='anonymous' 跨域加载（图像 CORS 干净，可绘入 canvas 导出），
+   * 无需任何第三方代理。原 corsproxy.io 代理已失效（返回 401），已移除。
    */
   function loadMapImage(gcjLng, gcjLat, amapKey, size, zoom) {
     return new Promise(function(resolve) {
-      if (!amapKey) { resolve(null); return }
+      if (!amapKey) { amapDebug('未配置 Key，跳过地图加载', 'warn'); resolve(null); return }
 
       var z = zoom || 15
-      const mapSize = Math.min(size || 350, 1024)
-      const apiUrl = 'https://restapi.amap.com/v3/staticmap?location=' + gcjLng + ',' + gcjLat + '&zoom=' + z + '&size=' + mapSize + '*' + mapSize + '&scale=2&markers=large,,:' + gcjLng + ',' + gcjLat + '&key=' + amapKey
-      const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(apiUrl)
+      var mapSize = Math.min(size || 350, 1024)
+      var apiUrl = 'https://restapi.amap.com/v3/staticmap?location=' + gcjLng + ',' + gcjLat +
+        '&zoom=' + z + '&size=' + mapSize + '*' + mapSize +
+        '&scale=2&markers=large,,:' + gcjLng + ',' + gcjLat + '&key=' + amapKey
 
       window.__lastMapApiUrl = apiUrl
-      console.log('[地图] API地址:', apiUrl)
-      console.log('[地图] 代理地址:', proxyUrl)
+      amapDebug('请求静态地图: ' + apiUrl, 'info')
 
-      var fetchOpts = {}
+      var fetchOpts = { mode: 'cors' }
       if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
-        fetchOpts.signal = AbortSignal.timeout(10000)
+        fetchOpts.signal = AbortSignal.timeout(12000)
       }
 
-      fetch(proxyUrl, fetchOpts)
+      fetch(apiUrl, fetchOpts)
         .then(function(res) {
-          console.log('[地图] 代理响应:', res.status)
+          var ctype = (res.headers && res.headers.get) ? (res.headers.get('content-type') || '') : ''
+          amapDebug('静态地图响应: HTTP ' + res.status + ' / ' + ctype, res.ok ? 'ok' : 'err')
           if (!res.ok) throw new Error('HTTP ' + res.status)
-          return res.blob()
+          return res.blob().then(function(blob) {
+            // 高德在 Key 异常时返回 200 + JSON 错误体（非图片），需解析出原因
+            if (!/^image\//.test(blob.type || ctype)) {
+              return blob.text().then(function(text) {
+                var info = text
+                try {
+                  var j = JSON.parse(text)
+                  info = 'status=' + j.status + ', info=' + j.info + (j.infocode ? (', infocode=' + j.infocode) : '')
+                } catch (e) { /* 非 JSON，保留原文 */ }
+                throw new Error('返回非图片内容: ' + info)
+              })
+            }
+            return blob
+          })
         })
         .then(function(blob) {
-          console.log('[地图] blob成功, 类型:', blob.type, '大小:', blob.size)
-          var reader = new FileReader()
-          reader.onloadend = function() {
-            var dataUrl = reader.result
-            var img = new Image()
-            img.onload = function() {
-              console.log('[地图] 加载成功:', this.naturalWidth, 'x', this.naturalHeight)
-              this._fromProxy = true
-              this._apiUrl = apiUrl
-              resolve(this)
-            }
-            img.onerror = function() {
-              console.warn('[地图] dataURL加载失败')
-              loadDirect(apiUrl, resolve)
-            }
-            img.src = dataUrl
+          amapDebug('获取到地图图片: ' + blob.size + ' 字节 (' + blob.type + ')', 'ok')
+          var img = new Image()
+          img.crossOrigin = 'anonymous'
+          img.onload = function() {
+            amapDebug('地图解码成功: ' + this.naturalWidth + 'x' + this.naturalHeight, 'ok')
+            this._apiUrl = apiUrl
+            this._taintsCanvas = false
+            resolve(this)
           }
-          reader.onerror = function() {
-            console.warn('[地图] FileReader失败')
-            loadDirect(apiUrl, resolve)
+          img.onerror = function() {
+            amapDebug('地图图片解码失败（可能格式/CORS 问题）', 'err')
+            resolve(null)
           }
-          reader.readAsDataURL(blob)
+          img.src = URL.createObjectURL(blob)
         })
-        .catch(function(proxyErr) {
-          console.warn('[地图] 代理失败:', proxyErr.message)
-          loadDirect(apiUrl, resolve)
+        .catch(function(err) {
+          amapDebug('静态地图加载失败: ' + err.message +
+            '｜排查：① 浏览器网络能否访问 restapi.amap.com；② Key 是否在高德控制台启用；③ Key 是否设置了 IP 白名单（静态地图走服务端 IP）', 'err')
+          resolve(null)
         })
     })
-  }
-
-  function loadDirect(apiUrl, resolve) {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = function() {
-      console.log('[地图] 直接加载成功(跨域)')
-      this._taintsCanvas = true
-      this._apiUrl = apiUrl
-      resolve(this)
-    }
-    img.onerror = function() {
-      console.warn('[地图] 直接加载失败')
-      resolve(null)
-    }
-    img.src = apiUrl
   }
 
   return { addWatermark: addWatermark, loadMapImage: loadMapImage }

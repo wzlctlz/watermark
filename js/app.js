@@ -574,20 +574,8 @@ function updateMapPreview() {
   if (!previewDiv || !previewImg) return
 
   if (state.sharedMapImg) {
-    if (state.sharedMapImg._fromProxy) {
-      // 代理加载的同源图片，可安全使用canvas
-      var canvas = document.createElement('canvas')
-      canvas.width = state.sharedMapImg.naturalWidth || state.sharedMapImg.width
-      canvas.height = state.sharedMapImg.naturalHeight || state.sharedMapImg.height
-      var ctx = canvas.getContext('2d')
-      ctx.drawImage(state.sharedMapImg, 0, 0)
-      previewImg.src = canvas.toDataURL('image/png')
-    } else if (state.sharedMapImg._apiUrl) {
-      // 跨域直接加载，用原URL显示（Image可直接显示跨域图）
-      previewImg.src = state.sharedMapImg._apiUrl
-    } else {
-      previewImg.src = state.sharedMapImg.src
-    }
+    // 地图图像为 CORS 干净（crossOrigin='anonymous' 加载），可直接显示/绘入 canvas
+    previewImg.src = state.sharedMapImg.src || state.sharedMapImg._apiUrl
     previewDiv.style.display = ''
   } else {
     previewDiv.style.display = 'none'
@@ -648,10 +636,12 @@ function reverseGeocode(lng, lat, amapKey) {
 
     var script = document.createElement('script')
     script.src = 'https://restapi.amap.com/v3/geocode/regeo?key=' + amapKey + '&location=' + lng + ',' + lat + '&extensions=base&callback=' + callbackName
+    log('[高德] 逆地理编码请求: ' + script.src, 'info')
 
     var timer = setTimeout(function() {
       delete window[callbackName]
       if (script.parentNode) script.parentNode.removeChild(script)
+      log('[高德] 逆地理编码超时', 'err')
       reject(new Error('逆地理编码超时'))
     }, 10000)
 
@@ -660,8 +650,10 @@ function reverseGeocode(lng, lat, amapKey) {
       delete window[callbackName]
       if (script.parentNode) script.parentNode.removeChild(script)
       if (data && data.status === '1' && data.regeocode) {
+        log('[高德] 逆地理编码成功 (status=1)', 'ok')
         resolve(data.regeocode.formatted_address || '')
       } else {
+        log('[高德] 逆地理编码失败: ' + ((data && data.info) || '未知错误'), 'err')
         reject(new Error((data && data.info) || '逆地理编码失败'))
       }
     }
@@ -670,6 +662,7 @@ function reverseGeocode(lng, lat, amapKey) {
       clearTimeout(timer)
       delete window[callbackName]
       if (script.parentNode) script.parentNode.removeChild(script)
+      log('[高德] 逆地理编码网络错误', 'err')
       reject(new Error('逆地理编码网络错误'))
     }
 
