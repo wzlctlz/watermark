@@ -1,52 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#10b981"/>
-      <stop offset="0.48" stop-color="#14b8a6"/>
-      <stop offset="1" stop-color="#06b6d4"/>
-    </linearGradient>
-    <linearGradient id="lens" x1="0.3" y1="0.2" x2="0.8" y2="0.9">
-      <stop offset="0" stop-color="#ecfeff"/>
-      <stop offset="0.55" stop-color="#67e8f9"/>
-      <stop offset="1" stop-color="#0e7490"/>
-    </linearGradient>
-    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="10" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.22"/>
     </filter>
-    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="5" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#e2e8f0"/>
+    </linearGradient>
   </defs>
 
-  <!-- 圆角渐变背景 -->
-  <rect x="28" y="28" width="456" height="456" rx="108" fill="url(#bg)"/>
-  <rect x="28" y="28" width="456" height="456" rx="108" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="10"/>
+  <rect x="28" y="28" width="456" height="456" rx="96" fill="url(#bgGrad)" stroke="#cbd5e1" stroke-width="6"/>
 
-  <!-- 相机主体 -->
-  <g filter="url(#glow)">
-    <rect x="116" y="190" width="280" height="188" rx="48" fill="#ffffff" fill-opacity="0.96"/>
-    <rect x="192" y="154" width="128" height="52" rx="18" fill="#ffffff" fill-opacity="0.9"/>
+  <!-- 相机机身 -->
+  <g filter="url(#shadow)">
+    <rect x="96" y="216" width="320" height="184" rx="40" fill="#0f172a"/>
+    <rect x="192" y="176" width="128" height="56" rx="24" fill="#0f172a"/>
+    <rect x="120" y="192" width="48" height="32" rx="14" fill="#0f172a"/>
   </g>
 
-  <!-- 镜头 -->
-  <g filter="url(#soft)">
-    <circle cx="256" cy="284" r="96" fill="#0f172a" fill-opacity="0.22"/>
-    <circle cx="256" cy="284" r="84" fill="#f8fafc"/>
-    <circle cx="256" cy="284" r="66" fill="url(#lens)"/>
-    <circle cx="256" cy="284" r="34" fill="#0f172a" fill-opacity="0.68"/>
-    <circle cx="240" cy="268" r="12" fill="#ffffff" fill-opacity="0.9"/>
+  <!-- 镜头外圈 -->
+  <circle cx="256" cy="308" r="130" fill="none" stroke="#0f172a" stroke-width="14"/>
+  <circle cx="256" cy="308" r="122" fill="#ffffff"/>
+
+  <!-- 彩色光圈叶片 -->
+  <g>
+    <path d="M 235.2 264.8 L 203.1 198.1 A 122 122 0 0 1 305.1 196.3 L 275.3 264.1 A 48 48 0 0 0 235.2 264.8 Z" fill="#3b82f6"/>
+    <path d="M 276.8 264.8 L 308.9 198.1 A 122 122 0 0 1 373.9 276.7 L 302.4 295.7 A 48 48 0 0 0 276.8 264.8 Z" fill="#8b5cf6"/>
+    <path d="M 302.8 297.3 L 374.9 280.9 A 122 122 0 0 1 354.0 380.7 L 294.5 336.6 A 48 48 0 0 0 302.8 297.3 Z" fill="#ef4444"/>
+    <path d="M 293.5 337.9 L 351.4 384.1 A 122 122 0 0 1 260.3 429.9 L 257.7 356.0 A 48 48 0 0 0 293.5 337.9 Z" fill="#f97316"/>
+    <path d="M 256.0 356.0 L 256.0 430.0 A 122 122 0 0 1 163.3 387.3 L 219.5 339.2 A 48 48 0 0 0 256.0 356.0 Z" fill="#facc15"/>
+    <path d="M 218.5 337.9 L 160.6 384.1 A 122 122 0 0 1 136.2 285.0 L 208.9 299.0 A 48 48 0 0 0 218.5 337.9 Z" fill="#84cc16"/>
+    <path d="M 209.2 297.3 L 137.1 280.9 A 122 122 0 0 1 199.3 200.0 L 233.7 265.5 A 48 48 0 0 0 209.2 297.3 Z" fill="#06b6d4"/>
   </g>
 
-  <!-- 闪光灯 -->
-  <circle cx="356" cy="218" r="12" fill="#fbbf24" filter="url(#soft)"/>
-
-  <!-- 定位/水印徽章 -->
-  <g transform="translate(380, 132)" filter="url(#glow)">
-    <circle cx="0" cy="0" r="46" fill="#f59e0b"/>
-    <circle cx="0" cy="0" r="38" fill="#fbbf24"/>
-    <path d="M0 -16 C -12 -16 -20 -6 -20 6 C -20 20 -6 32 0 38 C 6 32 20 20 20 6 C 20 -6 12 -16 0 -16 Z" fill="#ffffff"/>
-    <circle cx="0" cy="5" r="7" fill="#f59e0b"/>
-  </g>
+  <!-- 中心光圈开口 -->
+  <circle cx="256" cy="308" r="52" fill="#ffffff"/>
 </svg>
