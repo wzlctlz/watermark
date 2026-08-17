@@ -180,8 +180,11 @@ const WatermarkChunked = (() => {
       if (key) WMPhotoStep(key, 'canvas-fallback-to-jpegjs', { error: e.message })
     }
 
-    // 路径二：jpeg-js 像素拼接（仅浏览器硬限制无法创建 Canvas 时）
-    return encodeViaJpegJs(jpegArrayBuffer, config, key)
+    // 路径二：jpeg-js 像素拼接（仅首次尝试；缩放重试阶段由上层 forceScale 循环负责，避免重复无效调用）
+    if (!forceScale) {
+      return encodeViaJpegJs(jpegArrayBuffer, config, key)
+    }
+    return null
   }
 
   // ============================================================
@@ -369,6 +372,13 @@ const WatermarkChunked = (() => {
   // ============================================================
 
   async function encodeViaJpegJs(jpegArrayBuffer, config, key) {
+    // 防御：部分环境（如 iOS Safari 上加载到的 jpeg-js 打包）window.jpeg 存在但 decode 不是函数，
+    // 此时直接跳过，避免误导性 error，并交由 Canvas 多级缩放降级兜底。
+    if (typeof jpeg === 'undefined' || !jpeg || typeof jpeg.decode !== 'function') {
+      WMLog('warn', '[分块水印-jpegJs] 本环境 jpeg-js 不可用（jpeg.decode 缺失），跳过，依赖 Canvas 缩放降级', 'chunked')
+      if (key) WMPhotoStep(key, 'jpegjs-unavailable', {})
+      return null
+    }
     var jpegData = new Uint8Array(jpegArrayBuffer)
     var rawImage
     try {
