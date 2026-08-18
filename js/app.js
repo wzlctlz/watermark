@@ -178,6 +178,11 @@ function initApp() {
       log('[页面可见性] 处理中切入后台，继续处理但可能被系统限制', 'warn')
     }
   })
+  // 全屏状态变化监听（更新图标）
+  document.addEventListener('fullscreenchange', updateFullscreenIcon)
+  document.addEventListener('webkitfullscreenchange', updateFullscreenIcon)
+  document.addEventListener('mozfullscreenchange', updateFullscreenIcon)
+  document.addEventListener('MSFullscreenChange', updateFullscreenIcon)
   // 页面卸载前释放资源
   window.addEventListener('beforeunload', function () {
     cleanupAllResources()
@@ -249,6 +254,65 @@ function initTheme() {
   var handler = function() { if (getStoredTheme() === 'system') applyTheme() }
   if (mq.addEventListener) mq.addEventListener('change', handler)
   else if (mq.addListener) mq.addListener(handler)
+}
+
+// ===== 全屏切换 =====
+function toggleFullscreen() {
+  try {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.mozFullScreenElement && !document.msFullscreenElement) {
+      var el = document.documentElement
+      if (el.requestFullscreen) el.requestFullscreen()
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen()
+      else if (el.mozRequestFullScreen) el.mozRequestFullScreen()
+      else if (el.msRequestFullscreen) el.msRequestFullscreen()
+      log('[全屏] 进入全屏', 'info')
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen()
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
+      else if (document.mozCancelFullScreen) document.mozCancelFullScreen()
+      else if (document.msExitFullscreen) document.msExitFullscreen()
+      log('[全屏] 退出全屏', 'info')
+    }
+    if (typeof WMEvent === 'function') WMEvent('ui:toggle-fullscreen', { t: Date.now() })
+  } catch (e) {
+    log('[全屏] 切换失败: ' + e.message, 'err')
+  }
+}
+
+// 全屏状态变化时更新图标
+function updateFullscreenIcon() {
+  var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement)
+  var icon = document.getElementById('fullscreenIcon')
+  if (icon) {
+    if (isFs) {
+      // 退出全屏图标
+      icon.innerHTML = '<path d="M5 9V5h4M11 5h4v4M9 11v4H5v-4M14 9h-4"/>'
+    } else {
+      // 进入全屏图标
+      icon.innerHTML = '<path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/>'
+    }
+  }
+}
+
+// ===== 退出应用 =====
+function exitApp() {
+  try {
+    // 释放所有资源
+    cleanupAllResources()
+    log('[退出] 释放资源完成，准备退出', 'info')
+    if (typeof WMEvent === 'function') WMEvent('ui:exit-app', { t: Date.now() })
+    // 尝试关闭窗口（仅对脚本打开的窗口有效；普通导航打开的会被浏览器拦截）
+    // 先尝试 history.back()，适用于嵌入式 WebView
+    if (window.history && window.history.length > 1) {
+      window.history.back()
+    }
+    // 尝试关闭窗口
+    setTimeout(function() {
+      try { window.close() } catch (e) {}
+    }, 100)
+  } catch (e) {
+    console.error('[退出] 失败:', e)
+  }
 }
 
 // ===== 拖拽支持 =====
