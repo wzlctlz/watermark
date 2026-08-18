@@ -10,7 +10,7 @@ const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
 // 版本号格式：vYYYYMMDD（不含连字符）
-const APP_VERSION = 'v20260818'
+const APP_VERSION = 'v20260818-1824'
 // 资源占用限制（MB），超过阈值时自动延迟处理释放内存
 const MEM_LIMIT_MB = 350
 // 内存压力检测间隔（ms）
@@ -294,22 +294,73 @@ function updateFullscreenIcon() {
   }
 }
 
+// ===== 轻量 Toast 提示 =====
+function showToast(msg) {
+  try {
+    var t = document.createElement('div')
+    t.textContent = msg
+    t.style.cssText = 'position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:9999;' +
+      'background:rgba(15,23,42,.92);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;' +
+      'max-width:82vw;text-align:center;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.35);' +
+      'transition:opacity .3s ease;pointer-events:none;'
+    document.body.appendChild(t)
+    setTimeout(function () { t.style.opacity = '0' }, 2400)
+    setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t) }, 2800)
+  } catch (e) {}
+}
+
+// 重置为应用首页：清空当前会话的照片与状态，回到初始空页面（保留已保存配置）
+function resetToHome() {
+  try {
+    // 释放缩略图 URL，避免内存累积
+    var grid = document.getElementById('photoGrid')
+    if (grid) {
+      grid.querySelectorAll('.photo-item').forEach(function (oldItem) {
+        if (oldItem._thumbUrl) { try { URL.revokeObjectURL(oldItem._thumbUrl) } catch (e) {} }
+      })
+    }
+    state.files = []
+    state.exifData.clear()
+    state.processed.clear()
+    state.sharedWgsLng = state.sharedWgsLat = null
+    state.sharedGcjLng = state.sharedGcjLat = null
+    state.sharedAddress = null
+    state.selectMode = false
+    state.selectedIdx = -1
+    var mapPreview = document.getElementById('mapPreview')
+    if (mapPreview) mapPreview.style.display = 'none'
+    updateUI()
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  } catch (e) {
+    console.error('[resetToHome] 失败:', e)
+  }
+}
+
 // ===== 退出应用 =====
 function exitApp() {
   try {
-    // 释放所有资源
-    cleanupAllResources()
-    log('[退出] 释放资源完成，准备退出', 'info')
+    log('[退出] 开始释放资源并返回首页', 'info')
     if (typeof WMEvent === 'function') WMEvent('ui:exit-app', { t: Date.now() })
-    // 尝试关闭窗口（仅对脚本打开的窗口有效；普通导航打开的会被浏览器拦截）
-    // 先尝试 history.back()，适用于嵌入式 WebView
-    if (window.history && window.history.length > 1) {
-      window.history.back()
-    }
-    // 尝试关闭窗口
-    setTimeout(function() {
-      try { window.close() } catch (e) {}
-    }, 100)
+
+    // 1) 释放所有资源（Blob URL、地图缓存、画布）
+    cleanupAllResources()
+
+    // 2) 重置为应用首页（可见的「返回」动作：清空照片、回到初始空页面）
+    resetToHome()
+
+    // 3) 尝试关闭窗口：仅对「脚本打开」的窗口有效；普通导航打开的标签页会被浏览器拦截
+    try { window.close() } catch (e) {}
+
+    // 4) 若浏览器拦截了关闭（绝大多数直接打开的标签页都会如此），给出明确退出指引
+    setTimeout(function () {
+      if (!document.hidden) {
+        var hint = (('standalone' in navigator && navigator.standalone) ||
+          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches))
+          ? '已返回首页。若需退出应用：iOS 从屏幕底部上滑、Android 多任务划掉本应用'
+          : '已返回首页。若需关闭本页：请手动关闭标签页 / 浏览器'
+        showToast(hint)
+      }
+    }, 300)
   } catch (e) {
     console.error('[退出] 失败:', e)
   }

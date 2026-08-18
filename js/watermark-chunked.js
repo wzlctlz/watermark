@@ -503,10 +503,10 @@ const WatermarkChunked = (() => {
 
   // 计算信息栏布局：高度自适应，单栏每行一条信息，冒号对齐，标签加粗
   function computeBarLayout(imgW, imgH, config) {
-    // 关键：白条高度必须按「图像长边」缩放，而非宽度(imgW)。
-    // 竖向照片 imgW 是短边，若按 imgW 算白条会明显变矮；用 max(imgW,imgH) 后，
-    // 横竖屏同像素尺寸的照片白条高度一致，且横屏行为完全不变。
-    var s = Math.max(imgW, imgH) / 1000
+    // 关键：整体缩放基准按「照片高度（竖向长度）imgH」计算，而非宽度(imgW)。
+    // 竖向照片 imgW 是短边，若按 imgW 算白条会明显变矮；按 imgH 后，白条高度
+    // 与照片高度成比例，竖向照片也能得到正确的白条比例。
+    var s = imgH / 1000
     var titleFS = clampNum(Math.round(s * 8), 44, 110)
     var LABEL_FS = clampNum(Math.round(s * 5.5), 32, 82)
     var VALUE_FS = clampNum(Math.round(s * 7), 40, 96)
@@ -561,13 +561,15 @@ const WatermarkChunked = (() => {
     // 内容高度（不含地图）
     var contentH = top + itemsTotal + PAD
 
-    // 地图尺寸：占底部白条可用高度的 90%。
-    // 白条高度由文字内容(contentH)主导，地图只填满竖向留白，不会反向撑高白条。
-    var available = contentH - mapMargin * 2 - mapGap
-    var mapSize = clampNum(Math.round(available * 0.9), 160, maxMapW)
-    var minH = mapSize + mapMargin * 2 + mapGap
-    // 底部圆角留白
-    var height = Math.max(contentH, minH) + cornerInset
+    // 白条高度：按「照片高度（竖向长度）」的百分比计算（BAR_RATIO），且至少容纳文字内容。
+    // 这样竖向照片的白条高度与照片高度成比例，不再由文字内容单独主导。
+    var BAR_RATIO = 0.11
+    var baseH = Math.max(Math.round(imgH * BAR_RATIO), contentH) + cornerInset
+
+    // 静态地图尺寸：占「白条高度」的 90%。
+    var mapSize = clampNum(Math.round(baseH * 0.9), 160, maxMapW)
+    // 白条至少要能放下地图（地图 + 上下边距 + 间隙）；若放不下则加高
+    var height = Math.max(baseH, mapSize + mapMargin * 2 + mapGap)
 
     return {
       titleFS: titleFS, LABEL_FS: LABEL_FS, VALUE_FS: VALUE_FS, PAD: PAD,
