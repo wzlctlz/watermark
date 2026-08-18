@@ -56,7 +56,7 @@ function refreshFavicon() {
     if (typeof WMLog === 'function') WMLog('err', '[图标刷新] ' + e.message, 'favicon')
   }
 }
-window.refreshFavicon = refreshFavicon
+window.refreshFavicon = refreshFavicon;
 
 // ===== 禁止页面缩放（仿应用体验）=====
 // 屏蔽 pinch 双指缩放与双击缩放，让控件不被放大错位；预览弹窗内允许缩放以查看细节
@@ -89,12 +89,13 @@ window.refreshFavicon = refreshFavicon
 })()
 
 // ===== 初始化 =====
-document.addEventListener('DOMContentLoaded', function() {
+// 由于 app.js 在 </body> 前加载，DOM 已就绪，直接执行初始化
+// 不依赖 DOMContentLoaded（某些浏览器环境下可能已触发，导致 handler 不执行）
+function initApp() {
   log('水印相机 ' + APP_VERSION + ' (左上角艺术角标/动态包围框/加号修复版)', 'ok')
-  console.log('[水印相机] 版本: ' + APP_VERSION)
   captureEnvironment()
   initTheme()
-  refreshFavicon() // 以当前版本号刷新图标缓存键，确保已打开标签页显示最新书签图标
+  refreshFavicon()
   setupDragDrop()
   setupFileInputs()
   loadSavedConfig()
@@ -112,7 +113,10 @@ document.addEventListener('DOMContentLoaded', function() {
       if (typeof WMEvent === 'function') WMEvent('unhandled-rejection', { message: r && r.message ? r.message : String(r) })
     }
   })
-})
+}
+
+// app.js 在 </body> 前加载，DOM 已就绪，直接初始化
+initApp()
 
 // ===== 实时性能阶段显示（WMPerf 每完成一个阶段回调）=====
 // 在进度区实时显示「当前刚完成的阶段 + 耗时」，方便现场观察哪一步在卡/发热
