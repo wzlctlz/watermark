@@ -27,7 +27,7 @@
   if (window.WMDebug) return  // 避免热重载时重复初始化
   window.WMDebug = {
     schemaVersion: 4,
-    appVersion: 'v20260818-2057',
+    appVersion: 'v20260818-2105',
     startedAt: Date.now(),
     entries: [],   // {t, level, source, msg}
     photos: {},    // key -> { key, fileName, steps:[...], ...摘要字段 }

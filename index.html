@@ -7,11 +7,11 @@
 
   <!-- 书签/桌面图标：SVG 矢量优先，多尺寸 PNG 兜底 -->
   <!-- 每个图标 URL 带 ?v=版本号 作为缓存键：版本推进即 URL 变化，浏览器重新下载，书签在下次访问时拉取新版 -->
-  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-2057">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-2057">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-2057">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-2057">
-  <link rel="manifest" href="manifest.webmanifest?v=v20260818-2057">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-2105">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-2105">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-2105">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-2105">
+  <link rel="manifest" href="manifest.webmanifest?v=v20260818-2105">
   <meta name="theme-color" content="#f1f5f9">
 
   <!-- Tailwind CSS（主流开源UI框架，免构建） -->
@@ -102,8 +102,11 @@
       box-shadow: 0 2px 6px rgba(0,0,0,.04);
       transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
     }
-    .photo-item:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.12); border-color: rgba(16,185,129,.4); }
-    .photo-item.selected { border-color: transparent; }
+    /* 仅真实指针（鼠标）悬停时上浮，移动端触摸点按不会触发 :hover 位移，避免选中时照片上下抖动 */
+    @media (hover: hover) {
+      .photo-item:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.12); border-color: rgba(16,185,129,.4); }
+    }
+    .photo-item.selected { border-color: transparent; transform: none !important; }
     .photo-item.select-mode { cursor: crosshair; }
     /* 选中态：旋转渐变色圆角矩形环。
        实现要点：.sel-ring 作为静态圆角遮罩（用圆环 mask 挖空中心），
@@ -112,16 +115,18 @@
     .sel-ring {
       position: absolute; inset: 0; border-radius: 16px; pointer-events: none; z-index: 9; overflow: hidden;
       /* 圆环遮罩：padding 即环厚，content-box 与全图 XOR 挖空中心，只留边框环 */
-      padding: 3px;
+      padding: 4px;
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor; mask-composite: exclude;
-      filter: drop-shadow(0 0 6px rgba(16,185,129,.55));
+      filter: drop-shadow(0 0 8px rgba(16,185,129,.6));
     }
     .sel-ring-spin {
       position: absolute; left: 50%; top: 50%; width: 200%; height: 200%;
       transform: translate(-50%, -50%) rotate(0deg);
-      background: conic-gradient(from 0deg, #34d399, #10b981, #14b8a6, #22d3ee, #06b6d4, #14b8a6, #10b981, #34d399);
-      animation: wmRingSpin 2.6s linear infinite;
+      /* 高对比多色渐变：大跨度色相让旋转时的颜色流动清晰可见（区别于原版近似的青绿调） */
+      background: conic-gradient(from 0deg,
+        #f43f5e, #f59e0b, #facc15, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #f43f5e);
+      animation: wmRingSpin 3s linear infinite;
     }
     @keyframes wmRingSpin {
       from { transform: translate(-50%, -50%) rotate(0deg); }
@@ -294,7 +299,8 @@
     .btn-ghost:hover { background: rgba(148,163,184,.20); border-color: var(--primary); }
 
     /* ===== 动画 / 滚动条 ===== */
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    /* 仅做透明度淡入，不位移——避免网格重建（如选中后退出选择模式）时照片上下滑动/抖动 */
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     .photo-item { animation: fadeIn .25s ease; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }

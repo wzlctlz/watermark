@@ -10,7 +10,7 @@ const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
 // 版本号格式：vYYYYMMDD（不含连字符）
-const APP_VERSION = 'v20260818-2057'
+const APP_VERSION = 'v20260818-2105'
 // 资源占用限制（MB），超过阈值时自动延迟处理释放内存
 const MEM_LIMIT_MB = 350
 // 内存压力检测间隔（ms）
@@ -696,6 +696,27 @@ function syncSelection() {
   })
 }
 
+// ===== 退出选择模式（不重建网格，保持照片静止）=====
+// 仅移除每个 item 的 .select-mode 类、改回预览点击处理、并移除除「当前选中项」外的旋转环。
+// 复用已渲染的 <img> 与 blob URL，不做整网格重建，避免退出选择模式时照片闪烁/位移。
+function exitSelectMode() {
+  var grid = document.getElementById('photoGrid')
+  if (!grid) return
+  var items = grid.querySelectorAll('.photo-item')
+  items.forEach(function (item) {
+    var idx = parseInt(item.dataset.idx, 10)
+    if (isNaN(idx)) return
+    item.classList.remove('select-mode')
+    item.onclick = function () {
+      var key = state.files[idx].name + '_' + state.files[idx].size
+      showPreview(state.files[idx], state.exifData.get(key), state.processed.has(key))
+    }
+    // 仅保留当前选中项的旋转环，其余移除
+    var ring = item.querySelector('.sel-ring')
+    if (ring && idx !== state.selectedIdx && ring.parentNode) ring.parentNode.removeChild(ring)
+  })
+}
+
 // ===== 删除照片 =====
 function removePhoto(idx) {
   if (idx < 0 || idx >= state.files.length) return
@@ -859,9 +880,10 @@ async function selectPhotoForInfo(idx) {
   // 更新地图预览
   updateMapPreview()
 
-  // 退出选择模式
+  // 退出选择模式（不重建网格，照片保持静止）
   state.selectMode = false
-  updateUI()
+  exitSelectMode()
+  syncSelection()
 
   showToast('照片信息已加载，请确认水印配置')
 }
