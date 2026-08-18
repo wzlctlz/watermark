@@ -7,11 +7,11 @@
 
   <!-- 书签/桌面图标：SVG 矢量优先，多尺寸 PNG 兜底 -->
   <!-- 每个图标 URL 带 ?v=版本号 作为缓存键：版本推进即 URL 变化，浏览器重新下载，书签在下次访问时拉取新版 -->
-  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-2105">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-2105">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-2105">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-2105">
-  <link rel="manifest" href="manifest.webmanifest?v=v20260818-2105">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-2133">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-2133">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-2133">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-2133">
+  <link rel="manifest" href="manifest.webmanifest?v=v20260818-2133">
   <meta name="theme-color" content="#f1f5f9">
 
   <!-- Tailwind CSS（主流开源UI框架，免构建） -->
@@ -98,27 +98,31 @@
     .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px; }
     .photo-item {
       position: relative; border-radius: 16px; overflow: hidden; aspect-ratio: 1/1;
-      background: var(--input-bg); cursor: pointer; border: 1px solid var(--border);
-      box-shadow: 0 2px 6px rgba(0,0,0,.04);
-      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+      background: var(--input-bg); cursor: pointer; border: none;
+      /* 用 box-shadow 描边（不占布局），避免与选中渐变环的对齐/溢出错位 */
+      box-shadow: 0 0 0 1px var(--border), 0 2px 6px rgba(0,0,0,.04);
+      transition: transform .2s ease, box-shadow .2s ease;
     }
     /* 仅真实指针（鼠标）悬停时上浮，移动端触摸点按不会触发 :hover 位移，避免选中时照片上下抖动 */
     @media (hover: hover) {
-      .photo-item:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.12); border-color: rgba(16,185,129,.4); }
+      .photo-item:hover { transform: translateY(-3px); box-shadow: 0 0 0 1px rgba(16,185,129,.45), 0 10px 24px rgba(0,0,0,.12); }
     }
-    .photo-item.selected { border-color: transparent; transform: none !important; }
+    .photo-item.selected { box-shadow: none; transform: none !important; }
     .photo-item.select-mode { cursor: crosshair; }
-    /* 选中态：旋转渐变色圆角矩形环。
-       实现要点：.sel-ring 作为静态圆角遮罩（用圆环 mask 挖空中心），
+    /* 选中态：旋转渐变色圆角矩形环（边角持续形变，呈波浪/呼吸感）。
+       实现要点：.sel-ring 作为圆角遮罩（圆环 mask 挖空中心），
        内部 .sel-ring-spin 是一个略大于容器的 conic-gradient，用 transform: rotate 持续旋转。
-       这样渐变颜色沿环流动，且圆角矩形形状始终不变（不依赖 iOS 不支持的 @property 动画）。 */
+       形状动态变化由 .sel-ring 的 wmRingMorph（border-radius 形变）驱动，纯 CSS、iOS 全兼容。 */
     .sel-ring {
       position: absolute; inset: 0; border-radius: 16px; pointer-events: none; z-index: 9; overflow: hidden;
       /* 圆环遮罩：padding 即环厚，content-box 与全图 XOR 挖空中心，只留边框环 */
       padding: 4px;
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor; mask-composite: exclude;
-      filter: drop-shadow(0 0 8px rgba(16,185,129,.6));
+      /* 去掉绿色光晕（之前看起来像一圈稍大的绿边框）；仅保留极淡阴影增强层次 */
+      filter: drop-shadow(0 0 4px rgba(0,0,0,.22));
+      /* 形状动态变化：圆角矩形边角持续形变，配合内部渐变旋转，呈现波浪/呼吸感 */
+      animation: wmRingMorph 5s ease-in-out infinite;
     }
     .sel-ring-spin {
       position: absolute; left: 50%; top: 50%; width: 200%; height: 200%;
@@ -132,7 +136,15 @@
       from { transform: translate(-50%, -50%) rotate(0deg); }
       to   { transform: translate(-50%, -50%) rotate(360deg); }
     }
-    .photo-item.select-mode:hover { border-color: var(--primary); box-shadow: 0 6px 16px rgba(16,185,129,.14); }
+    /* 选中环边角持续形变（动态形状 / 波浪感），纯 border-radius 动画，iOS 全兼容 */
+    @keyframes wmRingMorph {
+      0%   { border-radius: 16px 16px 16px 16px; }
+      25%  { border-radius: 20px 13px 18px 15px / 17px 14px 20px 13px; }
+      50%  { border-radius: 13px 20px 15px 18px / 14px 20px 13px 17px; }
+      75%  { border-radius: 18px 15px 20px 13px / 20px 13px 17px 14px; }
+      100% { border-radius: 16px 16px 16px 16px; }
+    }
+    .photo-item.select-mode:hover { box-shadow: 0 6px 16px rgba(16,185,129,.18); }
     .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .photo-item .btn-delete {
       position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%;
