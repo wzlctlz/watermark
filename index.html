@@ -7,11 +7,11 @@
 
   <!-- 书签/桌面图标：SVG 矢量优先，多尺寸 PNG 兜底 -->
   <!-- 每个图标 URL 带 ?v=版本号 作为缓存键：版本推进即 URL 变化，浏览器重新下载，书签在下次访问时拉取新版 -->
-  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-2133">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-2133">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-2133">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-2133">
-  <link rel="manifest" href="manifest.webmanifest?v=v20260818-2133">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-2150">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-2150">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-2150">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-2150">
+  <link rel="manifest" href="manifest.webmanifest?v=v20260818-2150">
   <meta name="theme-color" content="#f1f5f9">
 
   <!-- Tailwind CSS（主流开源UI框架，免构建） -->
@@ -333,11 +333,11 @@
           <span id="themeIcon">🌐</span>
           <span id="themeLabel" class="hidden sm:inline text-xs">跟随系统</span>
         </button>
-        <!-- 退出应用 -->
-        <button id="exitBtn" onclick="exitApp()" title="退出应用"
-          class="group flex items-center justify-center w-9 h-9 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition text-sm">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 3H4v10h6M8 8h6M12 5l3 3-3 3"/>
+        <!-- 全屏 / 取消全屏（退出全屏后浏览器自动恢复地址栏/导航栏） -->
+        <button id="fullscreenBtn" onclick="toggleFullscreen()" title="全屏 / 取消全屏"
+          class="group flex items-center justify-center w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-sm">
+          <svg id="fullscreenIcon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/>
           </svg>
         </button>
       </div>
@@ -460,7 +460,6 @@
           <div class="sm:col-span-2 mt-1">
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-xs font-medium text-slate-500 dark:text-slate-400">输出质量</span>
-              <span class="text-[11px] text-emerald-500 dark:text-emerald-400 font-medium">仅压缩画质·不降分辨率</span>
             </div>
             <div class="quality-seg" id="qualitySeg">
               <button type="button" data-q="1" onclick="setQuality(this)" class="q-opt" title="JPEG 质量 100%（近似无损，文件最大）">无损</button>
@@ -546,8 +545,8 @@
   <script src="js/coord-transform.js"></script>
   <script src="js/exif-utils.js"></script>
   <script src="js/watermark.js"></script>
-  <script src="js/watermark-chunked.js"></script>
-  <script src="js/app.js?v=10"></script>
+  <script src="js/watermark-chunked.js?v=11"></script>
+  <script src="js/app.js?v=11"></script>
 
   <script>
     // 配置卡片收起 / 展开

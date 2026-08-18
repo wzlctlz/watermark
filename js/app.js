@@ -10,7 +10,7 @@ const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
 // 版本号格式：vYYYYMMDD（不含连字符）
-const APP_VERSION = 'v20260818-2133'
+const APP_VERSION = 'v20260818-2150'
 // 资源占用限制（MB），超过阈值时自动延迟处理释放内存
 const MEM_LIMIT_MB = 350
 // 内存压力检测间隔（ms）
@@ -97,7 +97,7 @@ window.refreshFavicon = refreshFavicon;
 // 由于 app.js 在 </body> 前加载，DOM 已就绪，直接执行初始化
 // 不依赖 DOMContentLoaded（某些浏览器环境下可能已触发，导致 handler 不执行）
 function initApp() {
-  log('水印相机 ' + APP_VERSION + ' (左上角艺术角标/动态包围框/加号修复版)', 'ok')
+  log(APP_VERSION, 'ok')
   captureEnvironment()
   initTheme()
   refreshFavicon()
@@ -299,32 +299,58 @@ function resetToHome() {
   }
 }
 
-// ===== 退出应用：最小化（返回首页并释放资源）=====
-// 浏览器安全策略禁止脚本关闭直接打开的页面（书签 / 桌面图标 PWA 均无法被关闭），
-// 因此「退出」按钮改为「最小化」语义：清空当前会话、释放所有资源、回到首页空状态，
-// 相当于把应用收起；真正的系统级最小化由用户从多任务手势完成。
-function exitApp() {
+// ===== 全屏 / 取消全屏 =====
+// 使用浏览器原生 Fullscreen API：
+// - 桌面浏览器（Chrome / Edge / Firefox）进入全屏会隐藏地址栏与导航栏；退出后自动恢复
+// - iOS Safari 自 iOS 13 起支持，但地址栏隐藏程度依版本而定；PWA 独立模式下本无地址栏
+function toggleFullscreen() {
   try {
-    log('[退出] 最小化：清空会话并返回首页', 'info')
-    if (typeof WMEvent === 'function') WMEvent('ui:exit-app', { t: Date.now() })
-
-    // 1) 先释放所有资源（Blob URL、地图缓存、画布），避免泄漏
-    cleanupAllResources()
-
-    // 2) 回到首页初始状态（清空照片/配置，相当于收起/最小化应用）
-    resetToHome()
-
-    // 3) 提示用户如何真正最小化（系统级手势）
-    var isStandalone = ('standalone' in navigator && navigator.standalone) ||
-      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-    var hint = isStandalone
-      ? '已返回首页。最小化本应用：iOS 从底部上滑进多任务、Android 多任务划掉'
-      : '已返回首页。最小化本页面：切换到其他标签或窗口即可'
-    showToast(hint)
+    var doc = document
+    var fsEl = doc.fullscreenElement || doc.webkitFullscreenElement ||
+               doc.mozFullScreenElement || doc.msFullscreenElement
+    if (fsEl) {
+      // 处于全屏 → 退出（地址栏 / 导航栏自动恢复）
+      if (doc.exitFullscreen) doc.exitFullscreen()
+      else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen()
+      else if (doc.mozCancelFullScreen) doc.mozCancelFullScreen()
+      else if (doc.msExitFullscreen) doc.msExitFullscreen()
+      log('[全屏] 已退出，恢复地址栏 / 导航栏', 'info')
+    } else {
+      // 非全屏 → 进入
+      var el = doc.documentElement
+      if (el.requestFullscreen) el.requestFullscreen()
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen()
+      else if (el.mozRequestFullScreen) el.mozRequestFullScreen()
+      else if (el.msRequestFullscreen) el.msRequestFullscreen()
+      log('[全屏] 已进入，隐藏地址栏 / 导航栏', 'info')
+    }
   } catch (e) {
-    console.error('[退出] 失败:', e)
+    console.error('[全屏] 失败:', e)
+    showToast('当前浏览器不支持全屏，或需在点击时触发')
   }
 }
+
+// 根据全屏状态同步按钮图标（非全屏＝展开图标，全屏中＝收起图标）
+function updateFullscreenIcon() {
+  var doc = document
+  var fsEl = doc.fullscreenElement || doc.webkitFullscreenElement ||
+             doc.mozFullScreenElement || doc.msFullscreenElement
+  var icon = document.getElementById('fullscreenIcon')
+  if (!icon) return
+  if (fsEl) {
+    // 全屏中 → 收起（四角向内）
+    icon.innerHTML = '<path d="M6 4H4V6M10 4H12V6M12 10V12H10M4 10H6V12"/>'
+  } else {
+    // 非全屏 → 展开（四角向外）
+    icon.innerHTML = '<path d="M3 6V3H6M10 3H13V6M13 10V13H10M6 13H3V10"/>'
+  }
+}
+
+// 监听全屏状态变化，自动同步图标（含 iOS Safari 的 webkit 前缀事件）
+;['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(function (ev) {
+  document.addEventListener(ev, updateFullscreenIcon)
+})
+updateFullscreenIcon()
 
 // ===== 拖拽支持 =====
 function setupDragDrop() {
