@@ -7,11 +7,11 @@
 
   <!-- 书签/桌面图标：SVG 矢量优先，多尺寸 PNG 兜底 -->
   <!-- 每个图标 URL 带 ?v=版本号 作为缓存键：版本推进即 URL 变化，浏览器重新下载，书签在下次访问时拉取新版 -->
-  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-2042">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-2042">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-2042">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-2042">
-  <link rel="manifest" href="manifest.webmanifest?v=v20260818-2042">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-2057">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-2057">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-2057">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-2057">
+  <link rel="manifest" href="manifest.webmanifest?v=v20260818-2057">
   <meta name="theme-color" content="#f1f5f9">
 
   <!-- Tailwind CSS（主流开源UI框架，免构建） -->
@@ -314,13 +314,6 @@
           class="group flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-sm">
           <span id="themeIcon">🌐</span>
           <span id="themeLabel" class="hidden sm:inline text-xs">跟随系统</span>
-        </button>
-        <!-- 全屏切换 -->
-        <button id="fullscreenBtn" onclick="toggleFullscreen()" title="全屏 / 退出全屏"
-          class="group flex items-center justify-center w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-sm">
-          <svg id="fullscreenIcon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/>
-          </svg>
         </button>
         <!-- 退出应用 -->
         <button id="exitBtn" onclick="exitApp()" title="退出应用"

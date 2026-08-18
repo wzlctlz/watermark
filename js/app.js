@@ -10,7 +10,7 @@ const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
 // 版本号格式：vYYYYMMDD（不含连字符）
-const APP_VERSION = 'v20260818-2042'
+const APP_VERSION = 'v20260818-2057'
 // 资源占用限制（MB），超过阈值时自动延迟处理释放内存
 const MEM_LIMIT_MB = 350
 // 内存压力检测间隔（ms）
@@ -178,11 +178,6 @@ function initApp() {
       log('[页面可见性] 处理中切入后台，继续处理但可能被系统限制', 'warn')
     }
   })
-  // 全屏状态变化监听（更新图标）
-  document.addEventListener('fullscreenchange', updateFullscreenIcon)
-  document.addEventListener('webkitfullscreenchange', updateFullscreenIcon)
-  document.addEventListener('mozfullscreenchange', updateFullscreenIcon)
-  document.addEventListener('MSFullscreenChange', updateFullscreenIcon)
   // 页面卸载前释放资源
   window.addEventListener('beforeunload', function () {
     cleanupAllResources()
@@ -262,44 +257,6 @@ function initTheme() {
   else if (mq.addListener) mq.addListener(handler)
 }
 
-// ===== 全屏切换 =====
-function toggleFullscreen() {
-  try {
-    if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.mozFullScreenElement && !document.msFullscreenElement) {
-      var el = document.documentElement
-      if (el.requestFullscreen) el.requestFullscreen()
-      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen()
-      else if (el.mozRequestFullScreen) el.mozRequestFullScreen()
-      else if (el.msRequestFullscreen) el.msRequestFullscreen()
-      log('[全屏] 进入全屏', 'info')
-    } else {
-      if (document.exitFullscreen) document.exitFullscreen()
-      else if (document.webkitExitFullscreen) document.webkitExitFullscreen()
-      else if (document.mozCancelFullScreen) document.mozCancelFullScreen()
-      else if (document.msExitFullscreen) document.msExitFullscreen()
-      log('[全屏] 退出全屏', 'info')
-    }
-    if (typeof WMEvent === 'function') WMEvent('ui:toggle-fullscreen', { t: Date.now() })
-  } catch (e) {
-    log('[全屏] 切换失败: ' + e.message, 'err')
-  }
-}
-
-// 全屏状态变化时更新图标
-function updateFullscreenIcon() {
-  var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement)
-  var icon = document.getElementById('fullscreenIcon')
-  if (icon) {
-    if (isFs) {
-      // 退出全屏图标
-      icon.innerHTML = '<path d="M5 9V5h4M11 5h4v4M9 11v4H5v-4M14 9h-4"/>'
-    } else {
-      // 进入全屏图标
-      icon.innerHTML = '<path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/>'
-    }
-  }
-}
-
 // ===== 轻量 Toast 提示 =====
 function showToast(msg) {
   try {
@@ -342,40 +299,28 @@ function resetToHome() {
   }
 }
 
-// ===== 退出应用：尽力关闭当前页 =====
-// 浏览器安全策略：只有当页面是由脚本（window.open）打开的窗口，window.close() 才会真正关闭当前页。
-// 用户直接输入网址 / 书签 / 桌面图标(standalone PWA) 打开的页面，脚本无法强制关闭，会被拦截。
-// 因此采用「多重尝试关闭 + 拦截后回退」策略，把「关闭」放在最优先，尽量真正关掉页面。
+// ===== 退出应用：最小化（返回首页并释放资源）=====
+// 浏览器安全策略禁止脚本关闭直接打开的页面（书签 / 桌面图标 PWA 均无法被关闭），
+// 因此「退出」按钮改为「最小化」语义：清空当前会话、释放所有资源、回到首页空状态，
+// 相当于把应用收起；真正的系统级最小化由用户从多任务手势完成。
 function exitApp() {
   try {
-    log('[退出] 尝试关闭当前页', 'info')
+    log('[退出] 最小化：清空会话并返回首页', 'info')
     if (typeof WMEvent === 'function') WMEvent('ui:exit-app', { t: Date.now() })
 
-    // 0) 先释放所有资源（Blob URL、地图缓存、画布），避免关闭过程中泄漏
+    // 1) 先释放所有资源（Blob URL、地图缓存、画布），避免泄漏
     cleanupAllResources()
 
-    // 1) 优先尝试直接关闭当前页（对脚本打开的窗口 / 部分内嵌场景有效）
-    try { window.close() } catch (e) {}
+    // 2) 回到首页初始状态（清空照片/配置，相当于收起/最小化应用）
+    resetToHome()
 
-    // 2) 兜底技巧：以 _self 重新打开自身再立即关闭，部分内核允许借此关闭直接打开的标签
-    try {
-      var w = window.open('', '_self')
-      if (w && typeof w.close === 'function') w.close()
-    } catch (e) {}
-
-    // 3) 若关闭被浏览器拦截（绝大多数直接打开的标签页 / 桌面图标 PWA 都会如此），
-    //    回退到「返回首页 + 明确指引」，让用户手动退出
-    setTimeout(function () {
-      if (!document.hidden) {
-        resetToHome()
-        var isStandalone = ('standalone' in navigator && navigator.standalone) ||
-          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-        var hint = isStandalone
-          ? '无法自动关闭（系统限制）。退出：iOS 从底部上滑进多任务、Android 多任务划掉本应用'
-          : '无法自动关闭（浏览器限制）。请手动关闭本标签页或浏览器窗口'
-        showToast(hint)
-      }
-    }, 350)
+    // 3) 提示用户如何真正最小化（系统级手势）
+    var isStandalone = ('standalone' in navigator && navigator.standalone) ||
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    var hint = isStandalone
+      ? '已返回首页。最小化本应用：iOS 从底部上滑进多任务、Android 多任务划掉'
+      : '已返回首页。最小化本页面：切换到其他标签或窗口即可'
+    showToast(hint)
   } catch (e) {
     console.error('[退出] 失败:', e)
   }
@@ -658,6 +603,7 @@ function updateUI() {
 
       var item = document.createElement('div')
       item.className = 'photo-item'
+      item.dataset.idx = idx
       if (state.selectMode) item.className += ' select-mode'
       if (idx === state.selectedIdx) item.className += ' selected'
 
@@ -719,6 +665,35 @@ function updateUI() {
     // 无论渲染是否异常，加号格始终回到网格末尾
     if (addCell) grid.appendChild(addCell)
   }
+}
+
+// ===== 仅同步选中态（不重建网格 / 不重载缩略图，避免闪烁）=====
+// 仅切换每张照片的 .selected 类与 .sel-ring 旋转环元素，复用已渲染的 <img> 与 blob URL。
+// 用于「在照片列表中切换选中」场景，替代整网格重建（updateUI），从根本上消除缩略图重载闪烁。
+function syncSelection() {
+  var grid = document.getElementById('photoGrid')
+  if (!grid) return
+  var items = grid.querySelectorAll('.photo-item')
+  items.forEach(function (item) {
+    var idx = parseInt(item.dataset.idx, 10)
+    if (isNaN(idx)) return
+    var selected = (idx === state.selectedIdx)
+    if (selected) {
+      item.classList.add('selected')
+      if (!item.querySelector('.sel-ring')) {
+        var ring = document.createElement('div')
+        ring.className = 'sel-ring'
+        var spin = document.createElement('div')
+        spin.className = 'sel-ring-spin'
+        ring.appendChild(spin)
+        item.appendChild(ring)
+      }
+    } else {
+      item.classList.remove('selected')
+      var existing = item.querySelector('.sel-ring')
+      if (existing && existing.parentNode) existing.parentNode.removeChild(existing)
+    }
+  })
 }
 
 // ===== 删除照片 =====
@@ -789,9 +764,9 @@ async function selectPhotoForInfo(idx) {
   var gps = exifResult && exifResult.gps ? exifResult.gps : null
   var amapKey = AMAP_WEB_KEY
 
-  // 标记选中
+  // 标记选中（仅切换选中态，不重建网格，避免缩略图闪烁）
   state.selectedIdx = idx
-  updateUI()
+  syncSelection()
 
   log('[加载照片信息] 选择: ' + file.name, 'ok')
 
