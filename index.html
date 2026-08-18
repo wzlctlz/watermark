@@ -7,12 +7,12 @@
 
   <!-- 书签/桌面图标：SVG 矢量优先，多尺寸 PNG 兜底 -->
   <!-- 每个图标 URL 带 ?v=版本号 作为缓存键：版本推进即 URL 变化，浏览器重新下载，书签在下次访问时拉取新版 -->
-  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-1828">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-1828">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-1828">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-1828">
-  <link rel="manifest" href="manifest.webmanifest?v=v20260818-1828">
-  <meta name="theme-color" content="#10b981">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818-2036">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818-2036">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818-2036">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818-2036">
+  <link rel="manifest" href="manifest.webmanifest?v=v20260818-2036">
+  <meta name="theme-color" content="#f1f5f9">
 
   <!-- Tailwind CSS（主流开源UI框架，免构建） -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -105,17 +105,28 @@
     .photo-item:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.12); border-color: rgba(16,185,129,.4); }
     .photo-item.selected { border-color: transparent; }
     .photo-item.select-mode { cursor: crosshair; }
-    /* 选中态：流动渐变圈（青绿系，与按键色协调） */
-    @property --wm-angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
-    .sel-frame {
-      position: absolute; inset: 0; border-radius: 16px; padding: 3px; pointer-events: none; z-index: 9;
-      background: conic-gradient(from var(--wm-angle), #34d399, #10b981, #14b8a6, #06b6d4, #34d399);
+    /* 选中态：旋转渐变色圆角矩形环。
+       实现要点：.sel-ring 作为静态圆角遮罩（用圆环 mask 挖空中心），
+       内部 .sel-ring-spin 是一个略大于容器的 conic-gradient，用 transform: rotate 持续旋转。
+       这样渐变颜色沿环流动，且圆角矩形形状始终不变（不依赖 iOS 不支持的 @property 动画）。 */
+    .sel-ring {
+      position: absolute; inset: 0; border-radius: 16px; pointer-events: none; z-index: 9; overflow: hidden;
+      /* 圆环遮罩：padding 即环厚，content-box 与全图 XOR 挖空中心，只留边框环 */
+      padding: 3px;
       -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
       -webkit-mask-composite: xor; mask-composite: exclude;
-      animation: wmAngle 3.2s linear infinite;
       filter: drop-shadow(0 0 6px rgba(16,185,129,.55));
     }
-    @keyframes wmAngle { to { --wm-angle: 360deg; } }
+    .sel-ring-spin {
+      position: absolute; left: 50%; top: 50%; width: 200%; height: 200%;
+      transform: translate(-50%, -50%) rotate(0deg);
+      background: conic-gradient(from 0deg, #34d399, #10b981, #14b8a6, #22d3ee, #06b6d4, #14b8a6, #10b981, #34d399);
+      animation: wmRingSpin 2.6s linear infinite;
+    }
+    @keyframes wmRingSpin {
+      from { transform: translate(-50%, -50%) rotate(0deg); }
+      to   { transform: translate(-50%, -50%) rotate(360deg); }
+    }
     .photo-item.select-mode:hover { border-color: var(--primary); box-shadow: 0 6px 16px rgba(16,185,129,.14); }
     .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .photo-item .btn-delete {

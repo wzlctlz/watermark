@@ -27,7 +27,7 @@
   if (window.WMDebug) return  // 避免热重载时重复初始化
   window.WMDebug = {
     schemaVersion: 4,
-    appVersion: 'v2026-08-17-perf',
+    appVersion: 'v20260818-2036',
     startedAt: Date.now(),
     entries: [],   // {t, level, source, msg}
     photos: {},    // key -> { key, fileName, steps:[...], ...摘要字段 }
@@ -501,17 +501,24 @@ const WatermarkChunked = (() => {
 
   function clampNum(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
 
-  // 计算信息栏布局：高度自适应，单栏每行一条信息，冒号对齐，标签加粗
+  // 计算信息栏布局：高度自适应，单栏每行一条信息，标签右对齐到固定列宽，
+  // 字号按「白条高度」比例放大，使文字充分填充白条、提升信息密度与可读性。
   function computeBarLayout(imgW, imgH, config) {
     // 关键：整体缩放基准按「照片长边」max(imgW,imgH) 计算。
     // 横竖屏统一取较长的一边，保证同像素尺寸的照片白条比例一致，竖向照片白条也不会偏小。
-    var s = Math.max(imgW, imgH) / 1000
-    var titleFS = clampNum(Math.round(s * 8), 44, 110)
-    var LABEL_FS = clampNum(Math.round(s * 5.5), 32, 82)
-    var VALUE_FS = clampNum(Math.round(s * 7), 40, 96)
-    var PAD = clampNum(Math.round(s * 5), 28, 72)
-    var lineHeight = Math.round(VALUE_FS * 1.18)
-    var itemGap = Math.round(VALUE_FS * 0.08)
+    var longSide = Math.max(imgW, imgH)
+    var BAR_RATIO = 0.12
+    // 白条估算高度：文字字号将以此为基准按比例放大，避免字号相对白条过小导致大量留白。
+    var estBarH = Math.round(longSide * BAR_RATIO)
+
+    // 字号按白条高度比例计算（不再是相对长边的极小系数），并设合理上下限。
+    // 这样白条越高，文字越大，内容能撑满白条。
+    var titleFS = clampNum(Math.round(estBarH * 0.15), 44, 150)
+    var LABEL_FS = clampNum(Math.round(estBarH * 0.092), 32, 100)
+    var VALUE_FS = clampNum(Math.round(estBarH * 0.115), 40, 130)
+    var PAD = clampNum(Math.round(estBarH * 0.05), 22, 64)
+    var lineHeight = Math.round(VALUE_FS * 1.22)
+    var itemGap = Math.round(VALUE_FS * 0.10)
 
     // 左右圆角安全内缩：文字整体右移，避免进入圆角被裁切
     var cornerInset = Math.round(imgW * 0.018)
@@ -526,7 +533,9 @@ const WatermarkChunked = (() => {
     var mCanvas = document.createElement('canvas')
     var mctx = mCanvas.getContext('2d')
 
-    // 标签列宽：以 4 个汉字为准，少于 4 汉字的标签用空格补齐到该宽度（中文对齐）
+    // 标签列宽：以 4 个汉字（"项目名称"）为基准列宽；
+    // 所有标签统一「右对齐」到该列宽右边缘，使两个字、几个字的标签都与四字「项目名称」右边缘对齐，
+    // 同时内容列（冒号）起始点固定，冒号也对齐。
     mctx.font = 'bold ' + LABEL_FS + 'px ' + FONT_FAMILY
     var cjkW = mctx.measureText('项').width
     var labelColW = cjkW * 4
@@ -536,11 +545,12 @@ const WatermarkChunked = (() => {
     items.forEach(function (it) {
       maxLabelW = Math.max(maxLabelW, mctx.measureText(it.label).width)
     })
-    // 列宽取「4字宽」与「最宽标签」的较大者，保证冒号不压住长标签
+    // 列宽取「4字宽」与「最宽标签」的较大者（防止个别超长标签溢出），作为右对齐锚点
     var colW = Math.max(labelColW, maxLabelW)
 
     var textLeft = PAD + cornerInset
     var gapToColon = Math.round(imgW * 0.006) + 16
+    // 内容列（冒号后正文）固定起始点：标签列右边缘 + 间隔
     var contentX = textLeft + colW + gapToColon
 
     mctx.font = VALUE_FS + 'px ' + FONT_FAMILY
@@ -555,21 +565,25 @@ const WatermarkChunked = (() => {
     })
 
     var titleBlockH = titleFS + Math.round(titleFS * 0.28) + Math.round(titleFS * 0.22)
-    var top = PAD + titleBlockH
+    // 内容块（标题 + 信息条目）总高，用于白条内垂直居中，使留白均匀分布、充分利用白条高度
+    var blockH = titleBlockH + itemsTotal
 
-    // 内容高度（不含地图）
-    var contentH = top + itemsTotal + PAD
-
-    // 白条高度：按「照片长边」的百分比计算（BAR_RATIO），且至少容纳文字内容。
-    // 横竖屏统一取较长的一边，保证白条比例一致。
-    var BAR_RATIO = 0.11
-    var longSide = Math.max(imgW, imgH)
-    var baseH = Math.max(Math.round(longSide * BAR_RATIO), contentH) + cornerInset
+    // 白条高度：优先按「照片长边」的百分比（BAR_RATIO）估算，
+    // 但若文字内容较多（blockH 超过估算），白条应随之加高以容纳全部文字并保留上下边距，
+    // 避免内容贴边或溢出。横竖屏统一取较长的一边，保证白条比例一致。
+    var contentH = PAD * 2 + blockH
+    var baseH = Math.max(estBarH, contentH) + cornerInset
 
     // 静态地图尺寸：占「白条高度」的 90%。
     var mapSize = clampNum(Math.round(baseH * 0.9), 160, maxMapW)
     // 白条至少要能放下地图（地图 + 上下边距 + 间隙）；若放不下则加高
-    var height = Math.max(baseH, mapSize + mapMargin * 2 + mapGap)
+    var mapNeedH = mapSize + mapMargin * 2 + mapGap
+    // 最终高度 = 估算/内容高度 与 地图所需高度的较大值，保证地图与文字都能完整呈现
+    var height = Math.max(baseH, mapNeedH)
+
+    // 内容块在白条内垂直居中：上下留白相等，整体更稳重且充分利用白条高度
+    var contentTop = Math.round((height - PAD * 2 - blockH) / 2)
+    if (contentTop < PAD) contentTop = PAD
 
     return {
       titleFS: titleFS, LABEL_FS: LABEL_FS, VALUE_FS: VALUE_FS, PAD: PAD,
@@ -578,7 +592,8 @@ const WatermarkChunked = (() => {
       cornerInset: cornerInset, textLeft: textLeft, contentX: contentX,
       labelColW: labelColW, colW: colW, cjkW: cjkW,
       valueMaxW: (imgW - mapAreaW - PAD) - contentX,
-      itemsLayout: itemsLayout, titleBlockH: titleBlockH, top: top, height: height
+      itemsLayout: itemsLayout, titleBlockH: titleBlockH, blockH: blockH,
+      top: contentTop, height: height
     }
   }
 
@@ -605,39 +620,39 @@ const WatermarkChunked = (() => {
     var titleFS = layout.titleFS
     var textLeft = layout.textLeft
 
-    // 标题（随圆角安全内缩右移）
+    // 标题（随圆角安全内缩右移；与信息条目同属一个内容块，从居中起点 top 开始绘制）
     ctx.save()
     ctx.textBaseline = 'top'
     ctx.font = 'bold ' + titleFS + 'px ' + FONT_FAMILY
     ctx.fillStyle = '#0b3d91'
-    ctx.fillText('勘察记录', textLeft, PAD)
+    ctx.fillText('勘察记录', textLeft, layout.top)
     var titleW = ctx.measureText('勘察记录').width
     ctx.strokeStyle = '#1a73e8'
     ctx.lineWidth = Math.max(3, Math.round(imgW * 0.003))
-    var dividerY = PAD + titleFS + Math.round(titleFS * 0.28)
+    var dividerY = layout.top + titleFS + Math.round(titleFS * 0.28)
     ctx.beginPath()
     ctx.moveTo(textLeft, dividerY)
     ctx.lineTo(textLeft + titleW, dividerY)
     ctx.stroke()
     ctx.restore()
 
-    // 信息条目（单栏，每行一条，冒号对齐，标签加粗，少于4汉字用全角空格补齐到4字宽）
-    var cursorY = layout.top
+    // 信息条目（单栏，每行一条；标签「右对齐」到固定列宽，与四字「项目名称」右边缘对齐；
+    // 内容列起始点固定，冒号亦对齐；正文首行以冒号开头，续行缩进到内容列）
+    // 条目紧跟在标题块之后，整体在白条内垂直居中
+    var cursorY = layout.top + layout.titleBlockH
     ctx.save()
     ctx.textBaseline = 'top'
     var cjkW = layout.cjkW || ctx.measureText('项').width
+    // 标签右对齐锚点：左内缩 + 列宽（= 4 汉字宽 / 最宽标签宽）
+    var labelRightX = textLeft + layout.colW
     layout.itemsLayout.forEach(function (item) {
-      // 标签（加粗），不足 4 汉字宽度则补全角空格
+      // 标签（加粗），右对齐到 labelRightX —— 两字/多字标签均与「项目名称」右边缘平齐
       ctx.font = 'bold ' + layout.LABEL_FS + 'px ' + FONT_FAMILY
       ctx.fillStyle = '#1a1a1a'
-      var lbl = item.label
-      var lw = ctx.measureText(lbl).width
-      if (lw < layout.labelColW) {
-        var padN = Math.ceil((layout.labelColW - lw) / cjkW)
-        if (padN > 0) lbl = lbl + new Array(padN + 1).join('　')
-      }
-      ctx.fillText(lbl, textLeft, cursorY)
-      // 内容（常规），首行以冒号开头，续行缩进到内容列
+      ctx.textAlign = 'right'
+      ctx.fillText(item.label, labelRightX, cursorY)
+      // 内容（常规），左对齐到固定的内容列起始点
+      ctx.textAlign = 'left'
       ctx.font = layout.VALUE_FS + 'px ' + FONT_FAMILY
       ctx.fillStyle = '#000000'
       for (var i = 0; i < item.valLines.length; i++) {

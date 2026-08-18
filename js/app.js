@@ -10,7 +10,7 @@ const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
 // 版本号格式：vYYYYMMDD（不含连字符）
-const APP_VERSION = 'v20260818-1828'
+const APP_VERSION = 'v20260818-2036'
 // 资源占用限制（MB），超过阈值时自动延迟处理释放内存
 const MEM_LIMIT_MB = 350
 // 内存压力检测间隔（ms）
@@ -234,6 +234,12 @@ function applyTheme() {
   document.documentElement.classList.toggle('dark', isDark)
   document.documentElement.setAttribute('data-theme', theme)
   updateThemeIcon(theme, isDark)
+  // 动态同步 theme-color：iOS Safari 上拉下拉（橡皮筋）区域会显示 theme-color，
+  // 若固定为绿色会导致与页面背景不一致。统一设为当前页面底色，明暗模式各自不同。
+  try {
+    var meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) meta.setAttribute('content', isDark ? '#0b1120' : '#f1f5f9')
+  } catch (e) {}
 }
 // 主题循环：system → light → dark → system
 function cycleTheme() {
@@ -667,9 +673,9 @@ function updateUI() {
       }
       var cornerDiv = '<div class="corner">' + cornerHtml + '</div>'
 
-      // 选中照片的酷炫包围框
+      // 选中照片的旋转渐变圆角矩形环（父级圆角遮罩 + 内部旋转渐变）
       var selFrame = (idx === state.selectedIdx)
-        ? '<div class="sel-frame"></div>'
+        ? '<div class="sel-ring"><div class="sel-ring-spin"></div></div>'
         : ''
 
       item.innerHTML = '<img src="' + thumbUrl + '" loading="lazy" alt="' + file.name + '">'
