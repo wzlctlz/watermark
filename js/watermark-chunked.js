@@ -27,7 +27,7 @@
   if (window.WMDebug) return  // 避免热重载时重复初始化
   window.WMDebug = {
     schemaVersion: 4,
-    appVersion: 'v20260818-2150',
+    appVersion: 'v20260818-2252',
     startedAt: Date.now(),
     entries: [],   // {t, level, source, msg}
     photos: {},    // key -> { key, fileName, steps:[...], ...摘要字段 }
@@ -480,23 +480,42 @@ const WatermarkChunked = (() => {
     return items
   }
 
-  // 文本按宽度换行（中文按字符断行）
-  function wrapText(ctx, text, maxW) {
-    if (!text) return ['']
-    var lines = []
-    var cur = ''
-    for (var i = 0; i < text.length; i++) {
-      var ch = text[i]
-      var test = cur + ch
-      if (cur.length > 0 && ctx.measureText(test).width > maxW) {
-        lines.push(cur)
-        cur = ch
-      } else {
-        cur = test
-      }
+  // 判断字符是否为全角（CJK / 全角标点），用于标签等宽填充
+  function isFullWidthChar(ch) {
+    var c = ch.codePointAt(0)
+    return (c >= 0x2E80) || (c >= 0x1100 && c <= 0x115F) ||
+           (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF00 && c <= 0xFF60) ||
+           (c >= 0xFFE0 && c <= 0xFFE6)
+  }
+
+  // 标签等宽填充：以 4 个汉字（"项目名称"）为基准宽度，较短的标签在中间补半角空格，
+  // 使所有标签视觉等宽、左缘与"项目名称"对齐。例："日期" -> "日   期"。
+  function padLabel(label) {
+    var TARGET_HALF = 8 // 4 个全角字 = 8 个半角单位
+    var units = 0
+    for (var i = 0; i < label.length; i++) units += isFullWidthChar(label[i]) ? 2 : 1
+    if (units >= TARGET_HALF) return label
+    var spaces = TARGET_HALF - units
+    var half = Math.ceil(label.length / 2)
+    var pad = ''
+    for (var k = 0; k < spaces; k++) pad += ' '
+    return label.slice(0, half) + pad + label.slice(half)
+  }
+
+  // 值单行处理：一律不自动换行。超出列宽则缩小字号以单行容纳；
+  // 缩到最小字号仍超长时再截断加省略号（仍保持单行）。
+  function fitValueSingleLine(ctx, text, maxW, baseFS, minFS) {
+    var fs = baseFS
+    ctx.font = fs + 'px ' + FONT_FAMILY
+    if (ctx.measureText(text).width <= maxW) return { text: text, fs: fs }
+    while (fs > minFS && ctx.measureText(text).width > maxW) {
+      fs -= 2
+      ctx.font = fs + 'px ' + FONT_FAMILY
     }
-    if (cur.length > 0) lines.push(cur)
-    return lines
+    if (ctx.measureText(text).width <= maxW) return { text: text, fs: fs }
+    var t = text
+    while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1)
+    return { text: t + '…', fs: fs }
   }
 
   function clampNum(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
@@ -554,17 +573,19 @@ const WatermarkChunked = (() => {
     var contentX = textLeft + colW + gapToColon
 
     mctx.font = VALUE_FS + 'px ' + FONT_FAMILY
+    var valueMaxW = (imgW - mapAreaW - PAD) - contentX
+    var minFS = Math.max(22, Math.round(VALUE_FS * 0.5))
     var itemsLayout = []
     var itemsTotal = 0
     items.forEach(function (it) {
-      var valLines = wrapText(mctx, it.value || '', (imgW - mapAreaW - PAD) - contentX)
-      var n = valLines.length
-      var h = n * lineHeight + (n > 0 ? itemGap : 0)
-      itemsLayout.push({ label: it.label, valLines: valLines, h: h })
+      var fit = fitValueSingleLine(mctx, it.value || '', valueMaxW, VALUE_FS, minFS)
+      var h = lineHeight + itemGap
+      itemsLayout.push({ label: it.label, valText: fit.text, valFS: fit.fs, h: h })
       itemsTotal += h
     })
 
-    var titleBlockH = titleFS + Math.round(titleFS * 0.28) + Math.round(titleFS * 0.22)
+    var titleGap = Math.round(titleFS * 0.6)
+    var titleBlockH = titleFS + Math.round(titleFS * 0.28) + Math.round(titleFS * 0.22) + titleGap
     // 内容块（标题 + 信息条目）总高，用于白条内垂直居中，使留白均匀分布、充分利用白条高度
     var blockH = titleBlockH + itemsTotal
 
@@ -642,23 +663,20 @@ const WatermarkChunked = (() => {
     var cursorY = layout.top + layout.titleBlockH
     ctx.save()
     ctx.textBaseline = 'top'
-    var cjkW = layout.cjkW || ctx.measureText('项').width
-    // 标签右对齐锚点：左内缩 + 列宽（= 4 汉字宽 / 最宽标签宽）
-    var labelRightX = textLeft + layout.colW
+    // 标签等宽左对齐：所有标签填充到与"项目名称"相同宽度（中间补空格），
+    // 左缘对齐，值统一从 contentX 起始列开始绘制。
     layout.itemsLayout.forEach(function (item) {
-      // 标签（加粗），右对齐到 labelRightX —— 两字/多字标签均与「项目名称」右边缘平齐
+      // 标签（加粗）
+      var padded = padLabel(item.label)
       ctx.font = 'bold ' + layout.LABEL_FS + 'px ' + FONT_FAMILY
       ctx.fillStyle = '#1a1a1a'
-      ctx.textAlign = 'right'
-      ctx.fillText(item.label, labelRightX, cursorY)
-      // 内容（常规），左对齐到固定的内容列起始点
       ctx.textAlign = 'left'
-      ctx.font = layout.VALUE_FS + 'px ' + FONT_FAMILY
+      ctx.fillText(padded, textLeft, cursorY)
+      // 内容（常规），单行、不换行，左对齐到固定内容列起始点
+      ctx.textAlign = 'left'
+      ctx.font = item.valFS + 'px ' + FONT_FAMILY
       ctx.fillStyle = '#000000'
-      for (var i = 0; i < item.valLines.length; i++) {
-        var text = (i === 0 ? '：' : '') + item.valLines[i]
-        ctx.fillText(text, layout.contentX, cursorY + i * layout.lineHeight)
-      }
+      ctx.fillText('：' + item.valText, layout.contentX, cursorY)
       cursorY += item.h
     })
     ctx.restore()

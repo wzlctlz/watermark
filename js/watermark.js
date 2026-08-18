@@ -78,7 +78,7 @@ const Watermark = (() => {
     const textAreaWidth = imgW - mapAreaW - padding * 2
     const colGap = 32
     const colWidth = (textAreaWidth - colGap) / 2
-    const colStartY = titleBottom + 36
+    const colStartY = titleBottom + 80
     const labelFontSize = 36
     const valueFontSize = 52
     const itemHeight = 110
@@ -190,7 +190,7 @@ const Watermark = (() => {
     const items = buildItems(config)
     const colGap = 32
     const colWidth = (imgW - padding * 3) / 2
-    const colStartY = imgH + padding + titleFontSize + 48
+    const colStartY = imgH + padding + titleFontSize + 96
     const labelFontSize = 36
     const valueFontSize = 52
     const itemHeight = 110
@@ -209,6 +209,28 @@ const Watermark = (() => {
       console.error('降级导出也失败：', e2.message)
       return null
     }
+  }
+
+  // 判断字符是否为全角（CJK / 全角标点），用于标签等宽填充
+  function isFullWidthChar(ch) {
+    var c = ch.codePointAt(0)
+    return (c >= 0x2E80) || (c >= 0x1100 && c <= 0x115F) ||
+           (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF00 && c <= 0xFF60) ||
+           (c >= 0xFFE0 && c <= 0xFFE6)
+  }
+
+  // 标签等宽填充：以 4 个汉字（"项目名称"）为基准宽度，较短的标签在中间补半角空格，
+  // 使所有标签视觉等宽、左缘与"项目名称"对齐。例："日期" -> "日   期"。
+  function padLabel(label) {
+    var TARGET_HALF = 8
+    var units = 0
+    for (var i = 0; i < label.length; i++) units += isFullWidthChar(label[i]) ? 2 : 1
+    if (units >= TARGET_HALF) return label
+    var spaces = TARGET_HALF - units
+    var half = Math.ceil(label.length / 2)
+    var pad = ''
+    for (var k = 0; k < spaces; k++) pad += ' '
+    return label.slice(0, half) + pad + label.slice(half)
   }
 
   /**
@@ -244,12 +266,14 @@ const Watermark = (() => {
     items.forEach(function(item, i) {
       const y = startY + i * itemHeight
 
-      // 标签（灰色小字）
+      // 标签（灰色小字，等宽填充后左对齐绘制）
+      ctx.textAlign = 'left'
       ctx.font = labelFontSize + 'px ' + fontFamily
       ctx.fillStyle = '#888888'
-      ctx.fillText(item.label, x, y)
+      ctx.fillText(padLabel(item.label), x, y)
 
-      // 值（黑色大字）
+      // 值（黑色大字，单行、不换行）
+      ctx.textAlign = 'left'
       ctx.font = valueFontSize + 'px ' + fontFamily
       ctx.fillStyle = '#000000'
       let valueText = item.value
