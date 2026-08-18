@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -7,11 +7,11 @@
 
   <!-- 书签/桌面图标：SVG 矢量优先，多尺寸 PNG 兜底 -->
   <!-- 每个图标 URL 带 ?v=版本号 作为缓存键：版本推进即 URL 变化，浏览器重新下载，书签在下次访问时拉取新版 -->
-  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260817-2318">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260817-2318">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260817-2318">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260817-2318">
-  <link rel="manifest" href="manifest.webmanifest?v=v20260817-2318">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=v20260818">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png?v=v20260818">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png?v=v20260818">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=v20260818">
+  <link rel="manifest" href="manifest.webmanifest?v=v20260818">
   <meta name="theme-color" content="#10b981">
 
   <!-- Tailwind CSS（主流开源UI框架，免构建） -->
@@ -74,7 +74,7 @@
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
+    html, body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
       background: var(--bg);
       color: var(--text);
@@ -82,6 +82,9 @@
       transition: background .3s ease, color .3s ease;
       -webkit-font-smoothing: antialiased;
     }
+    /* 安全区上下边缘底色与页面一致，避免不规则屏幕出现白色边带 */
+    html { background: var(--bg); min-height: 100%; }
+    body { min-height: 100vh; }
     /* 适配刘海/灵动岛：viewport-fit=cover 后给主容器留出安全区 */
     @supports (padding: env(safe-area-inset-left)) {
       .max-w-4xl.mx-auto {
@@ -505,7 +508,7 @@
   <script src="js/exif-utils.js"></script>
   <script src="js/watermark.js"></script>
   <script src="js/watermark-chunked.js"></script>
-  <script src="js/app.js?v=8"></script>
+  <script src="js/app.js?v=9"></script>
 
   <script>
     // 配置卡片收起 / 展开

@@ -9,7 +9,12 @@
 const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
-const APP_VERSION = 'v20260817-2318'
+// 版本号格式：vYYYYMMDD（不含连字符）
+const APP_VERSION = 'v20260818'
+// 资源占用限制（MB），超过阈值时自动延迟处理释放内存
+const MEM_LIMIT_MB = 350
+// 内存压力检测间隔（ms）
+const MEM_CHECK_INTERVAL = 500
 
 // ===== 全局状态 =====
 const state = {
@@ -99,20 +104,102 @@ function initApp() {
   setupDragDrop()
   setupFileInputs()
   loadSavedConfig()
-  // 全局错误捕获（任何未捕获异常都进入调试记录，便于事后定位）
+
+  // ===== 全局事件捕获（记录所有事件和响应，带时间戳）=====
+  // 全局错误捕获
   window.addEventListener('error', function (ev) {
-    if (typeof WMLog === 'function') {
-      WMLog('err', '[全局异常] ' + (ev.message || 'unknown') + (ev.filename ? ' @ ' + ev.filename + ':' + ev.lineno : ''), 'global')
-      if (typeof WMEvent === 'function') WMEvent('uncaught-error', { message: ev.message, file: ev.filename, line: ev.lineno, col: ev.colno })
-    }
+    var errMsg = (ev.message || 'unknown') + (ev.filename ? ' @ ' + ev.filename + ':' + ev.lineno + ':' + ev.colno : '')
+    log('[全局异常] ' + errMsg, 'err')
+    if (typeof WMLog === 'function') WMLog('err', '[全局异常] ' + errMsg, 'global')
+    if (typeof WMEvent === 'function') WMEvent('uncaught-error', { t: Date.now(), message: ev.message, file: ev.filename, line: ev.lineno, col: ev.colno, stack: ev.error ? ev.error.stack : null })
   })
+  // 未处理的 Promise 拒绝
   window.addEventListener('unhandledrejection', function (ev) {
-    if (typeof WMLog === 'function') {
-      var r = ev.reason
-      WMLog('err', '[未处理的Promise拒绝] ' + (r && r.message ? r.message : String(r)), 'global')
-      if (typeof WMEvent === 'function') WMEvent('unhandled-rejection', { message: r && r.message ? r.message : String(r) })
+    var r = ev.reason
+    var errMsg = r && r.message ? r.message : String(r)
+    log('[未处理的Promise拒绝] ' + errMsg, 'err')
+    if (typeof WMLog === 'function') WMLog('err', '[未处理的Promise拒绝] ' + errMsg, 'global')
+    if (typeof WMEvent === 'function') WMEvent('unhandled-rejection', { t: Date.now(), message: errMsg, stack: r && r.stack ? r.stack : null })
+  })
+
+  // ===== 用户交互事件捕获（记录所有关键交互，带时间戳）=====
+  // 按钮点击
+  document.addEventListener('click', function (e) {
+    var target = e.target
+    var label = ''
+    if (target) {
+      if (target.tagName === 'BUTTON') {
+        label = target.textContent ? target.textContent.trim().substring(0, 30) : '(button)'
+      } else if (target.tagName === 'INPUT' && target.type === 'file') {
+        label = 'fileInput'
+      } else if (target.id) {
+        label = '#' + target.id
+      } else if (target.className && typeof target.className === 'string') {
+        label = target.className.substring(0, 30)
+      }
+    }
+    if (label && typeof WMEvent === 'function') {
+      WMEvent('user:click', { t: Date.now(), label: label, x: e.clientX, y: e.clientY })
+    }
+  }, true)
+  // 输入变化
+  document.addEventListener('change', function (e) {
+    var target = e.target
+    if (target && target.tagName === 'INPUT' && target.id) {
+      if (typeof WMEvent === 'function') {
+        WMEvent('user:change', { t: Date.now(), id: target.id, type: target.type, checked: target.checked, valueLength: (target.value || '').length })
+      }
+    }
+  }, true)
+  // 网络请求捕获（fetch wrapper）
+  if (window.fetch) {
+    var _origFetch = window.fetch
+    window.fetch = function () {
+      var url = arguments[0] || ''
+      var opts = arguments[1] || {}
+      var reqId = Date.now() + '_' + Math.random().toString(36).substring(2, 6)
+      if (typeof WMEvent === 'function') WMEvent('fetch:request', { t: Date.now(), reqId: reqId, url: String(url).substring(0, 200), method: opts.method || 'GET' })
+      return _origFetch.apply(this, arguments).then(function (res) {
+        if (typeof WMEvent === 'function') WMEvent('fetch:response', { t: Date.now(), reqId: reqId, url: String(url).substring(0, 200), status: res.status, ok: res.ok })
+        return res
+      }).catch(function (err) {
+        if (typeof WMEvent === 'function') WMEvent('fetch:error', { t: Date.now(), reqId: reqId, url: String(url).substring(0, 200), error: err.message })
+        throw err
+      })
+    }
+  }
+  // 页面可见性变化（安卓后台切换时暂停/恢复处理）
+  document.addEventListener('visibilitychange', function () {
+    var visible = document.visibilityState === 'visible'
+    log('[页面可见性] ' + (visible ? '恢复前台' : '切入后台'), 'info')
+    if (typeof WMEvent === 'function') WMEvent('visibility:change', { t: Date.now(), visible: visible, state: document.visibilityState })
+    // 页面隐藏时主动释放部分内存（安卓后台资源回收友好）
+    if (!visible && state.processing) {
+      log('[页面可见性] 处理中切入后台，继续处理但可能被系统限制', 'warn')
     }
   })
+  // 页面卸载前释放资源
+  window.addEventListener('beforeunload', function () {
+    cleanupAllResources()
+  })
+  // 内存警告（部分安卓浏览器支持）
+  if (document.addEventListener) {
+    document.addEventListener('memorywarning', function () {
+      log('[内存警告] 系统发出内存警告，尝试释放资源', 'warn')
+      if (typeof WMEvent === 'function') WMEvent('system:memory-warning', { t: Date.now() })
+      cleanupAllResources()
+    })
+  }
+  // 定期内存监控（处理过程中）
+  setInterval(function () {
+    if (state.processing && typeof performance !== 'undefined' && performance.memory) {
+      var usedMB = performance.memory.usedJSHeapSize / 1048576
+      if (usedMB > MEM_LIMIT_MB) {
+        log('[内存监控] JS堆 ' + Math.round(usedMB) + 'MB 超过阈值 ' + MEM_LIMIT_MB + 'MB，触发GC等待', 'warn')
+        if (typeof WMEvent === 'function') WMEvent('memory:over-limit', { t: Date.now(), usedMB: Math.round(usedMB), limitMB: MEM_LIMIT_MB })
+      }
+    }
+  }, MEM_CHECK_INTERVAL)
 }
 
 // app.js 在 </body> 前加载，DOM 已就绪，直接初始化
@@ -272,7 +359,9 @@ async function addFiles(newFiles) {
         var bmp = await createImageBitmap(f)
         exifResult.imgWidth = bmp.width
         exifResult.imgHeight = bmp.height
-        bmp.close()
+        // 立即释放 ImageBitmap，避免内存堆积
+        if (bmp.close) bmp.close()
+        bmp = null
       } catch (e2) {
         exifResult.imgWidth = 0
         exifResult.imgHeight = 0
@@ -424,6 +513,13 @@ function updateUI() {
       return
     }
 
+    // 释放上一次渲染的缩略图 URL，避免内存泄漏
+    var oldItems = grid.querySelectorAll('.photo-item')
+    oldItems.forEach(function (oldItem) {
+      if (oldItem._thumbUrl) {
+        try { URL.revokeObjectURL(oldItem._thumbUrl) } catch (e) {}
+      }
+    })
     grid.innerHTML = ''
     state.files.forEach(function(file, idx) {
       var key = file.name + '_' + file.size
@@ -435,7 +531,10 @@ function updateUI() {
       if (state.selectMode) item.className += ' select-mode'
       if (idx === state.selectedIdx) item.className += ' selected'
 
+      // 缩略图 URL：处理完后释放，避免内存泄漏
       var thumbUrl = URL.createObjectURL(file)
+      // 将 thumbUrl 存储在 item 上，方便清理时释放
+      item._thumbUrl = thumbUrl
 
       // 左上角艺术角标：GPS 状态 + 分辨率
       var cornerHtml = ''
@@ -728,10 +827,12 @@ function reverseGeocode(lng, lat, amapKey) {
     if (!amapKey) { reject(new Error('无高德Key')); return }
 
     var callbackName = '_amap_regeo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+    var reqId = Date.now() + '_' + Math.random().toString(36).substring(2, 6)
 
     var script = document.createElement('script')
     script.src = 'https://restapi.amap.com/v3/geocode/regeo?key=' + amapKey + '&location=' + lng + ',' + lat + '&extensions=base&callback=' + callbackName
     log('[高德] 逆地理编码请求: ' + script.src, 'info')
+    if (typeof WMEvent === 'function') WMEvent('amap:regeo-request', { t: Date.now(), reqId: reqId, url: script.src.substring(0, 200) })
 
     var timer = setTimeout(function() {
       delete window[callbackName]
@@ -746,9 +847,11 @@ function reverseGeocode(lng, lat, amapKey) {
       if (script.parentNode) script.parentNode.removeChild(script)
       if (data && data.status === '1' && data.regeocode) {
         log('[高德] 逆地理编码成功 (status=1)', 'ok')
+        if (typeof WMEvent === 'function') WMEvent('amap:regeo-response', { t: Date.now(), reqId: reqId, status: '1', address: data.regeocode.formatted_address || '' })
         resolve(data.regeocode.formatted_address || '')
       } else {
         log('[高德] 逆地理编码失败: ' + ((data && data.info) || '未知错误'), 'err')
+        if (typeof WMEvent === 'function') WMEvent('amap:regeo-response', { t: Date.now(), reqId: reqId, status: data ? data.status : 'null', info: data ? data.info : 'no data' })
         reject(new Error((data && data.info) || '逆地理编码失败'))
       }
     }
@@ -1016,9 +1119,22 @@ async function startBatchProcess() {
       wmCanvas.height = 1
     }
 
+    // 主动触发 GC（安卓 WebView 内存回收效率较低，需主动让出主线程）
+    // 内存超过阈值时增加等待时间，避免连续处理导致 OOM
+    var gcWaitMs = 80
+    if (typeof performance !== 'undefined' && performance.memory) {
+      var usedMB = performance.memory.usedJSHeapSize / 1048576
+      if (usedMB > MEM_LIMIT_MB) gcWaitMs = 500
+      if (usedMB > MEM_LIMIT_MB * 1.5) gcWaitMs = 1500
+      if (usedMB > MEM_LIMIT_MB * 2) {
+        log('[内存监控] JS堆 ' + Math.round(usedMB) + 'MB 严重超限，强制GC等待', 'warn')
+        gcWaitMs = 3000
+      }
+    }
+
     // 短暂让出主线程，允许GC回收内存
     if (idx < state.files.length - 1) {
-      await new Promise(function(r) { setTimeout(r, 80) })
+      await new Promise(function(r) { setTimeout(r, gcWaitMs) })
     }
 
     done++
@@ -1128,6 +1244,48 @@ async function downloadAll() {
   downloadBtn.textContent = '生成压缩包'
 }
 
+// ===== 资源释放与内存管理 =====
+// 主动释放所有可回收资源（Bitmap/Canvas/Blob URL/MapCache）
+function cleanupAllResources() {
+  try {
+    // 释放处理结果的 Blob URL
+    state.processed.forEach(function (obj) {
+      if (obj && obj.blobUrl) {
+        try { URL.revokeObjectURL(obj.blobUrl) } catch (e) {}
+      }
+    })
+    // 释放地图缓存中的 Image 对象引用
+    state.mapCache.clear()
+    // 重置 watermarkCanvas
+    var wmCanvas = document.getElementById('watermarkCanvas')
+    if (wmCanvas) {
+      var wmCtx = wmCanvas.getContext('2d')
+      wmCtx.clearRect(0, 0, wmCanvas.width, wmCanvas.height)
+      wmCanvas.width = 1
+      wmCanvas.height = 1
+    }
+    if (typeof WMEvent === 'function') WMEvent('cleanup:resources', { t: Date.now() })
+  } catch (e) {
+    console.error('[cleanup] 释放资源失败:', e)
+  }
+}
+
+// 等待 GC 回收内存（处理大图后的主动让出）
+// 返回 Promise，resolve 时表示已等待完成
+function waitForGC(reason) {
+  return new Promise(function (resolve) {
+    var waitMs = 100
+    // 如果内存压力大，等待更久
+    if (typeof performance !== 'undefined' && performance.memory) {
+      var usedMB = performance.memory.usedJSHeapSize / 1048576
+      if (usedMB > MEM_LIMIT_MB) waitMs = 500
+      if (usedMB > MEM_LIMIT_MB * 1.5) waitMs = 1500
+    }
+    if (reason) log('[GC] ' + reason + '，等待 ' + waitMs + 'ms', 'info')
+    setTimeout(resolve, waitMs)
+  })
+}
+
 // ===== 清空 =====
 function clearAll() {
   if (state.files.length > 0 && !confirm('确定清空所有照片？')) return
@@ -1136,14 +1294,23 @@ function clearAll() {
 
   // 释放所有 Blob URL
   state.processed.forEach(function(obj) {
-    if (obj && obj.blobUrl) URL.revokeObjectURL(obj.blobUrl)
+    if (obj && obj.blobUrl) { try { URL.revokeObjectURL(obj.blobUrl) } catch (e) {} }
   })
+  // 释放缩略图 URL
+  var grid = document.getElementById('photoGrid')
+  if (grid) {
+    var oldItems = grid.querySelectorAll('.photo-item')
+    oldItems.forEach(function (oldItem) {
+      if (oldItem._thumbUrl) { try { URL.revokeObjectURL(oldItem._thumbUrl) } catch (e) {} }
+    })
+  }
+  // 释放地图缓存
+  state.mapCache.clear()
+  state.sharedMapImg = null
 
   state.files = []
   state.exifData.clear()
   state.processed.clear()
-  state.mapCache.clear()
-  state.sharedMapImg = null
   state.sharedWgsLng = state.sharedWgsLat = null
   state.sharedGcjLng = state.sharedGcjLat = null
   state.sharedAddress = null
@@ -1517,9 +1684,11 @@ function log(msg, level) {
   var logArea = document.getElementById('logArea')
   if (!logArea) return
   var cls = level === 'ok' ? 'log-ok' : level === 'warn' ? 'log-warn' : level === 'err' ? 'log-err' : ''
+  var now = new Date()
+  var ts = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0') + '.' + String(now.getMilliseconds()).padStart(3, '0')
   var line = document.createElement('div')
   line.className = cls
-  line.textContent = msg
+  line.textContent = '[' + ts + '] ' + msg
   logArea.appendChild(line)
   logArea.scrollTop = logArea.scrollHeight
 }
@@ -1557,7 +1726,11 @@ function captureEnvironment() {
       Worker: typeof Worker,
       fetch: typeof fetch,
       Blob: typeof Blob,
-      createImageBitmapResize: (typeof createImageBitmap === 'function')
+      createImageBitmapResize: (typeof createImageBitmap === 'function'),
+      // 安卓稳定性相关特性检测
+      performanceMemory: !!(typeof performance !== 'undefined' && performance.memory),
+      visibilityState: typeof document.visibilityState,
+      memoryWarningEvent: 'memorywarning' in document || 'onmemorywarning' in document
     }
   })
 
