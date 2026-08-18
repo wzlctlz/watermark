@@ -10,7 +10,7 @@ const AMAP_WEB_KEY = '1b67b1cda76952d5d05398af1dc1ba3e'
 
 // 应用版本（与调试导出 schema 对应）
 // 版本号格式：vYYYYMMDD（不含连字符）
-const APP_VERSION = 'v20260818-2036'
+const APP_VERSION = 'v20260818-2042'
 // 资源占用限制（MB），超过阈值时自动延迟处理释放内存
 const MEM_LIMIT_MB = 350
 // 内存压力检测间隔（ms）
@@ -342,31 +342,40 @@ function resetToHome() {
   }
 }
 
-// ===== 退出应用 =====
+// ===== 退出应用：尽力关闭当前页 =====
+// 浏览器安全策略：只有当页面是由脚本（window.open）打开的窗口，window.close() 才会真正关闭当前页。
+// 用户直接输入网址 / 书签 / 桌面图标(standalone PWA) 打开的页面，脚本无法强制关闭，会被拦截。
+// 因此采用「多重尝试关闭 + 拦截后回退」策略，把「关闭」放在最优先，尽量真正关掉页面。
 function exitApp() {
   try {
-    log('[退出] 开始释放资源并返回首页', 'info')
+    log('[退出] 尝试关闭当前页', 'info')
     if (typeof WMEvent === 'function') WMEvent('ui:exit-app', { t: Date.now() })
 
-    // 1) 释放所有资源（Blob URL、地图缓存、画布）
+    // 0) 先释放所有资源（Blob URL、地图缓存、画布），避免关闭过程中泄漏
     cleanupAllResources()
 
-    // 2) 重置为应用首页（可见的「返回」动作：清空照片、回到初始空页面）
-    resetToHome()
-
-    // 3) 尝试关闭窗口：仅对「脚本打开」的窗口有效；普通导航打开的标签页会被浏览器拦截
+    // 1) 优先尝试直接关闭当前页（对脚本打开的窗口 / 部分内嵌场景有效）
     try { window.close() } catch (e) {}
 
-    // 4) 若浏览器拦截了关闭（绝大多数直接打开的标签页都会如此），给出明确退出指引
+    // 2) 兜底技巧：以 _self 重新打开自身再立即关闭，部分内核允许借此关闭直接打开的标签
+    try {
+      var w = window.open('', '_self')
+      if (w && typeof w.close === 'function') w.close()
+    } catch (e) {}
+
+    // 3) 若关闭被浏览器拦截（绝大多数直接打开的标签页 / 桌面图标 PWA 都会如此），
+    //    回退到「返回首页 + 明确指引」，让用户手动退出
     setTimeout(function () {
       if (!document.hidden) {
-        var hint = (('standalone' in navigator && navigator.standalone) ||
-          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches))
-          ? '已返回首页。若需退出应用：iOS 从屏幕底部上滑、Android 多任务划掉本应用'
-          : '已返回首页。若需关闭本页：请手动关闭标签页 / 浏览器'
+        resetToHome()
+        var isStandalone = ('standalone' in navigator && navigator.standalone) ||
+          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+        var hint = isStandalone
+          ? '无法自动关闭（系统限制）。退出：iOS 从底部上滑进多任务、Android 多任务划掉本应用'
+          : '无法自动关闭（浏览器限制）。请手动关闭本标签页或浏览器窗口'
         showToast(hint)
       }
-    }, 300)
+    }, 350)
   } catch (e) {
     console.error('[退出] 失败:', e)
   }
