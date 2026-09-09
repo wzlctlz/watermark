@@ -68,7 +68,22 @@ jobs:
 
       - name: 编译 Debug APK
         working-directory: android
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee "$RUNNER_TEMP/build.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: 失败时导出构建日志到 build-logs 分支
+        if: failure()
+        run: |
+          if [ ! -f "$RUNNER_TEMP/build.log" ]; then echo "(no build log)" > "$RUNNER_TEMP/build.log"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B build-logs
+          cp "$RUNNER_TEMP/build.log" build-log.txt
+          git add -f build-log.txt
+          git commit -m "build log $(date -u +%Y%m%dT%H%M%SZ)" || exit 0
+          git push -f origin build-logs || exit 0
 
       - name: 上传 APK
         uses: actions/upload-artifact@v4
