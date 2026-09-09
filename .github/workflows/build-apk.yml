@@ -96,3 +96,19 @@ jobs:
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      # Artifacts 需要登录才能下载，这里再发布到 Release，手机可直接下载安装
+      - name: 发布到 Release（apk-latest）
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          echo "APK: $APK  ($(du -h "$APK" | cut -f1))"
+          if gh release view apk-latest >/dev/null 2>&1; then
+            gh release upload apk-latest "$APK" --clobber
+          else
+            gh release create apk-latest --title "水印相机 APK（最新构建）" \
+              --notes "GitHub Actions 自动构建，commit ${GITHUB_SHA::7}" "$APK"
+          fi
