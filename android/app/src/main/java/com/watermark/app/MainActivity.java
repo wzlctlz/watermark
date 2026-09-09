@@ -55,6 +55,10 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQ_CAMERA_CAPTURE = 1002;
     private static final int REQ_GALLERY = 1003;
 
+    // WebChromeClient.FileChooserParams.MODE_MULTIPLE 在公开 SDK 中未导出（AOSP 中 @hide），
+    // 其值固定为 1（MODE_SINGLE=0, MODE_MULTIPLE=1, MODE_SAVE=2）
+    private static final int MODE_MULTIPLE = 1;
+
     private WebView webView;
     private WebViewAssetLoader assetLoader;
 
@@ -118,9 +122,7 @@ public class MainActivity extends AppCompatActivity {
                                              ValueCallback<Uri[]> filePathCallback,
                                              FileChooserParams fileChooserParams) {
                 MainActivity.this.filePathCallback = filePathCallback;
-                // FileChooserParams 没有 isMultipleSelection()，用 getMode() 判断
-                MainActivity.this.pendingMultiple =
-                        fileChooserParams.getMode() == WebChromeClient.FileChooserParams.MODE_MULTIPLE;
+                MainActivity.this.pendingMultiple = fileChooserParams.getMode() == MODE_MULTIPLE;
                 showPickerDialog();
                 return true;
             }
