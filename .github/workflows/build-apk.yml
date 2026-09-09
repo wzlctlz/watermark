@@ -6,6 +6,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# GITHUB_TOKEN 默认只有读权限，导出构建日志到分支需要写权限
+permissions:
+  contents: write
+
 jobs:
   build:
     name: 编译 APK
