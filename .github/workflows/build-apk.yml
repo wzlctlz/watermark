@@ -1,0 +1,79 @@
+name: Build Android APK
+
+# 云端编译：推送到 main 或手动触发，编译产物在 Actions 页面的 Artifacts 下载
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: 编译 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 接受 SDK 许可并安装编译组件
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          SM=""
+          for c in \
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "$ANDROID_HOME/cmdline-tools/bin/sdkmanager" \
+            "$ANDROID_HOME/tools/bin/sdkmanager" ; do
+            if [ -x "$c" ]; then SM="$c"; break; fi
+          done
+          if [ -z "$SM" ]; then SM="$(command -v sdkmanager || true)"; fi
+          echo "sdkmanager=$SM"
+          if [ -n "$SM" ]; then
+            yes | "$SM" --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
+            "$SM" --sdk_root="$ANDROID_HOME" \
+              "platform-tools" "platforms;android-34" "build-tools;34.0.0" || true
+          fi
+          ls "$ANDROID_HOME" || true
+
+      - name: 安装 Gradle 8.2
+        run: |
+          curl -sL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.2-bin.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          echo "/opt/gradle-8.2/bin" >> "$GITHUB_PATH"
+
+      - name: 复制网页资源到 APK assets
+        run: |
+          set -e
+          ASSETS=android/app/src/main/assets
+          mkdir -p "$ASSETS"
+          cp -r index.html js "$ASSETS/"
+          if [ -d lib ]; then cp -r lib "$ASSETS/"; fi
+          for f in manifest.webmanifest favicon.svg favicon.ico \
+                   favicon-32x32.png favicon-16x16.png \
+                   apple-touch-icon.png icon-192.png icon-512.png; do
+            if [ -f "$f" ]; then cp "$f" "$ASSETS/"; fi
+          done
+          echo "--- assets 结构 ---"
+          ls -R "$ASSETS" | head -40
+
+      - name: 编译 Debug APK
+        working-directory: android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: watermark-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30

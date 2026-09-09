@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 相机机身 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M26,42 L34,42 L38,30 L70,30 L74,42 L82,42 C85.3,42 88,44.7 88,48 L88,76 C88,79.3 85.3,82 82,82 L26,82 C22.7,82 20,79.3 20,76 L20,48 C20,44.7 22.7,42 26,42 Z" />
+
+    <!-- 镜头外圈 -->
+    <path
+        android:fillColor="#0B1120"
+        android:pathData="M54,40 A16,16 0 1,0 54,72 A16,16 0 1,0 54,40 Z" />
+
+    <!-- 镜头内圈 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,48 A8,8 0 1,0 54,64 A8,8 0 1,0 54,48 Z" />
+
+</vector>

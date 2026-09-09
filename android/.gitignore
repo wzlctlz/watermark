@@ -1,0 +1,11 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/captures
+.externalNativeBuild
+.cxx
+/build
+# assets 由 CI 在构建时从仓库根复制生成，不入库
+/app/src/main/assets/
