@@ -5,6 +5,9 @@ plugins {
 android {
     namespace 'com.watermark.app'
     compileSdk 34
+    // 本机 SDK（D:\Projects\SDK\Andriod）只装了 build-tools 36.0.0，
+    // 而 AGP 8.2.2 默认取 34.0.0，故显式固定为已安装的 36.0.0，避免再下载。
+    buildToolsVersion '36.0.0'
 
     defaultConfig {
         applicationId 'com.watermark.app'
