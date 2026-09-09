@@ -118,7 +118,9 @@ public class MainActivity extends AppCompatActivity {
                                              ValueCallback<Uri[]> filePathCallback,
                                              FileChooserParams fileChooserParams) {
                 MainActivity.this.filePathCallback = filePathCallback;
-                MainActivity.this.pendingMultiple = fileChooserParams.isMultipleSelection();
+                // FileChooserParams 没有 isMultipleSelection()，用 getMode() 判断
+                MainActivity.this.pendingMultiple =
+                        fileChooserParams.getMode() == WebChromeClient.FileChooserParams.MODE_MULTIPLE;
                 showPickerDialog();
                 return true;
             }
